@@ -34,9 +34,19 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01: Add package, TypeScript config, source layout, and development scripts.
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02: Implement minimal CLI command and startup flow.
+
+**Wave 3** *(blocked on Waves 1 and 2 completion)*
 - [ ] 01-03: Document local setup, environment variables, and data directories.
+
+Cross-cutting constraints:
+- Phase 1 must not recreate the legacy documentation directory.
+- Phase 1 must not connect to model providers; Phase 2 owns `pi-agent-core` and `pi-ai` wiring.
+- Local-first defaults must keep generated data and secrets out of git.
 
 ### Phase 2: Agent Runtime and Tool Loop
 **Goal**: Connect CLI messages to a single assistant agent loop using `pi-agent-core` and `pi-ai`, with streaming output and first local tool calls.

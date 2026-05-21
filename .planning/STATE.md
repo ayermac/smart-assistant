@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 1 of 7 (Foundation and CLI Skeleton)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-05-21 — Initialized GSD planning artifacts from `docs/`
+Last activity: 2026-05-21 — Consolidated planning artifacts into `.planning`
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -65,5 +65,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-05-21 20:30
-Stopped at: GSD project initialized from docs and ready for `$gsd-plan-phase 1`
+Stopped at: GSD project initialized in `.planning` and ready for `$gsd-plan-phase 1`
 Resume file: None

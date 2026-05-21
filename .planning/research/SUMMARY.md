@@ -1,6 +1,6 @@
 # Research Summary: smart-assistant
 
-**Source:** Synthesized from `README.md` and `docs/*.md` on 2026-05-21.
+**Source:** Synthesized from the initial product docs and consolidated into `.planning` on 2026-05-21.
 
 ## Stack
 
@@ -55,12 +55,51 @@ The Assistant Controller owns orchestration around context assembly, session per
 - Planning should not directly access storage; it should consume memory/RAG/tool outputs through the controller.
 - Model-provider context should be minimized because the product is local-first, not cloud-first.
 
-## Canonical Docs
+## Agent Behavior Rules
 
-- `docs/PRODUCT.md`
-- `docs/ARCHITECTURE.md`
-- `docs/AGENT-SPEC.md`
-- `docs/MEMORY-RAG.md`
-- `docs/TOOLS.md`
-- `docs/EVALUATION.md`
-- `docs/ROADMAP.md`
+- Understand the user request before deciding whether to call a tool.
+- Ask a clarification question when required information is missing.
+- Plan before execution for complex tasks.
+- Prefer tool results over model guesses.
+- Do not invent facts that are absent from local memory or the local knowledge base.
+- Keep responses concise, explicit, and execution-oriented.
+- Distinguish known facts, retrieved facts, and inferred conclusions when relevant.
+- Use `search_knowledge` for local knowledge questions.
+- Use `remember` only for explicit long-term facts or preferences.
+- Use `recall_memory` for user preferences or durable historical facts.
+- Use `create_plan` for complex tasks and `update_plan` when plan state changes.
+- On tool failure, return an explainable error and choose a conservative fallback.
+
+## Tool Contracts
+
+- `remember(text, tags?)`: stores a long-term memory and returns the stored item id.
+- `recall_memory(query)`: returns relevant memory entries and match reasons.
+- `search_knowledge(query, topK?)`: returns snippets, source paths, and relevance signals.
+- `create_plan(goal)`: returns structured steps with ids and statuses.
+- `update_plan(stepId, status, note?)`: returns the updated plan state.
+- `get_time(timezone?)`: returns a current time string.
+
+All v1 tools are local by default. Write tools return explicit success/failure. Retrieval tools can return empty results.
+
+## Evaluation Cases
+
+1. 普通问答可正常响应。
+2. 能记住一条明确写入的长期信息。
+3. 能回忆用户偏好。
+4. 能从本地知识库找到相关内容。
+5. 检索不到时能明确说不知道。
+6. 能把复杂任务拆成步骤。
+7. 能在步骤变化时更新计划。
+8. 工具失败时能给出可理解错误。
+9. 上下文变长时仍能保持基本可用。
+10. 旧会话恢复后能继续工作。
+
+Release readiness requires at least 8 of these 10 cases to pass reliably.
+
+## Canonical Planning Artifacts
+
+- `.planning/PROJECT.md`
+- `.planning/REQUIREMENTS.md`
+- `.planning/ROADMAP.md`
+- `.planning/STATE.md`
+- `.planning/research/SUMMARY.md`

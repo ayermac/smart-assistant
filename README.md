@@ -10,17 +10,17 @@
 - 入口形态：CLI 优先，后续可扩展 Web/API
 - 数据边界：默认本地保存，知识和记忆先只做本地文本/Markdown
 
-## 现在要做什么
+## 当前状态
 
-先把文档补齐，再进入实现：
+项目已经初始化为 GSD 项目，规划入口集中在 `.planning`：
 
-- [产品定义](docs/PRODUCT.md)
-- [系统架构](docs/ARCHITECTURE.md)
-- [Agent 规范](docs/AGENT-SPEC.md)
-- [记忆与 RAG](docs/MEMORY-RAG.md)
-- [工具定义](docs/TOOLS.md)
-- [评测方案](docs/EVALUATION.md)
-- [路线图](docs/ROADMAP.md)
+- [.planning/PROJECT.md](.planning/PROJECT.md)：项目定义、核心价值、约束和关键决策
+- [.planning/REQUIREMENTS.md](.planning/REQUIREMENTS.md)：v1 需求、范围边界和 phase 映射
+- [.planning/ROADMAP.md](.planning/ROADMAP.md)：阶段路线图和可交付结果
+- [.planning/STATE.md](.planning/STATE.md)：当前进度和会话延续状态
+- [.planning/research/SUMMARY.md](.planning/research/SUMMARY.md)：架构、工具、行为规范和评测用例摘要
+
+下一步：运行 `$gsd-plan-phase 1`，为 Phase 1 生成可执行计划。
 
 ## 设计原则
 
@@ -28,4 +28,3 @@
 - 先做本地文本/Markdown，再扩展更复杂的数据源
 - 先把 memory、RAG、planning 分开，再决定怎么组合
 - 先保证可评测，再扩展能力
-

@@ -44,16 +44,13 @@
 
 ## Context
 
-项目当前已有产品级中文文档：
+项目规划统一收口到 GSD `.planning` 目录：
 
-- `README.md`：项目定位、快速导航和设计原则。
-- `docs/PRODUCT.md`：目标用户、核心场景、MVP、非目标和成功标准。
-- `docs/ARCHITECTURE.md`：CLI -> Assistant Controller -> `pi-agent-core` -> tools -> `pi-ai` -> provider 的数据流。
-- `docs/AGENT-SPEC.md`：agent 行为原则、工具策略、澄清策略和失败处理。
-- `docs/MEMORY-RAG.md`：Memory、RAG、Planning 的边界。
-- `docs/TOOLS.md`：第一版工具目录和接口约定。
-- `docs/EVALUATION.md`：10 个验收用例和评测矩阵。
-- `docs/ROADMAP.md`：从 CLI MVP 到 memory、RAG、planner 和可选扩展的路线。
+- `.planning/PROJECT.md`：项目定位、核心价值、约束和关键决策。
+- `.planning/REQUIREMENTS.md`：v1 需求、v2 延后项、非目标和 traceability。
+- `.planning/ROADMAP.md`：从 CLI skeleton 到 agent runtime、session、memory、RAG、planning、evaluation 的阶段路线。
+- `.planning/research/SUMMARY.md`：架构、工具、agent 行为规范、评测用例和实现注意事项。
+- `.planning/STATE.md`：当前 phase、进度、延后项和会话延续状态。
 
 运行时参考项目：
 
@@ -101,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-21 after initialization from docs/*
+*Last updated: 2026-05-21 after consolidating planning into .planning/*

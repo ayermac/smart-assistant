@@ -12,7 +12,7 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 - [ ] **FND-01**: Project has a TypeScript runtime scaffold with package scripts for local development, build, typecheck, and CLI execution.
 - [ ] **FND-02**: Project has a CLI entry that can start the assistant from the terminal.
 - [ ] **FND-03**: Project documents required environment variables and local data directories.
-- [ ] **FND-04**: Project keeps product, architecture, memory/RAG, tools, evaluation, and roadmap docs aligned with implementation scope.
+- [ ] **FND-04**: Project keeps `.planning` artifacts and README aligned with implementation scope.
 
 ### Agent Runtime
 
@@ -21,7 +21,7 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 - [ ] **AGT-03**: Model calls go through `pi-ai` instead of direct provider-specific code.
 - [ ] **AGT-04**: Assistant can stream response text to the CLI.
 - [ ] **AGT-05**: Assistant can call at least one local tool and include the tool result in the response.
-- [ ] **AGT-06**: Assistant follows the behavior rules from `docs/AGENT-SPEC.md`, including clarification and conservative failure behavior.
+- [ ] **AGT-06**: Assistant follows the behavior rules in `.planning/research/SUMMARY.md`, including clarification and conservative failure behavior.
 
 ### Session
 
@@ -61,7 +61,7 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 
 ### Evaluation
 
-- [ ] **EVAL-01**: Project has an evaluation harness or manual script covering the 10 cases in `docs/EVALUATION.md`.
+- [ ] **EVAL-01**: Project has an evaluation harness or manual script covering the 10 cases in `.planning/research/SUMMARY.md`.
 - [ ] **EVAL-02**: At least 8 of 10 acceptance cases pass reliably for the v1 release.
 - [ ] **EVAL-03**: Evaluation distinguishes chat, memory, RAG, planning, tool failure, and session restore behavior.
 
@@ -144,4 +144,4 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-21*
-*Last updated: 2026-05-21 after initialization from docs/*
+*Last updated: 2026-05-21 after consolidating planning into .planning/*

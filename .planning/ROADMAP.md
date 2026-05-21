@@ -29,8 +29,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. User can run a package script that starts the `smart-assistant` CLI.
   2. Project has TypeScript build and typecheck scripts.
-  3. README or docs explain required environment variables and local data directories.
-  4. Product docs remain aligned with the CLI-first local-first implementation boundary.
+  3. README explains required environment variables and local data directories.
+  4. `.planning` artifacts remain aligned with the CLI-first local-first implementation boundary.
 **Plans**: 3 plans
 
 Plans:
@@ -136,7 +136,7 @@ Plans:
 Plans:
 - [ ] 07-01: Build evaluation fixtures and runner/manual script for the 10 cases.
 - [ ] 07-02: Add failure-mode checks for missing knowledge, tool errors, and session restore.
-- [ ] 07-03: Update docs with current status and release-readiness notes.
+- [ ] 07-03: Update README and `.planning` artifacts with current status and release-readiness notes.
 
 ## Progress
 

@@ -20,17 +20,22 @@
 - [.planning/STATE.md](.planning/STATE.md)：当前进度和会话延续状态
 - [.planning/research/SUMMARY.md](.planning/research/SUMMARY.md)：架构、工具、行为规范和评测用例摘要
 
-当前 Phase 1 已提供可运行的 TypeScript CLI 脚手架；下一步是进入 Phase 2，接入 `pi-agent-core` 和 `pi-ai` 的 agent runtime。
+当前 Phase 2 已连接 `pi-agent-core` 和 `pi-ai` 的 agent runtime，支持流式输出和工具调用；下一步是进入 Phase 3，实现会话持久化和恢复。
 
 ## Quick Start
 
 ```bash
 npm install
+# Set your Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-...
+# Or create a .env file with ANTHROPIC_API_KEY=sk-ant-...
 npm run dev
 npm run typecheck
 npm run build
 node dist/cli.js --help
 ```
+
+**Required**: `ANTHROPIC_API_KEY` environment variable must be set to use the assistant.
 
 ## Local Data
 
@@ -45,14 +50,22 @@ Phase 1 约定的子目录：
 
 `.env.example` 会列出 Phase 1 的环境变量占位。
 
-## Phase 1 Behavior
+## Phase 2 Status
 
-Phase 1 只提供 CLI 脚手架和占位交互，不连接模型 provider。
+Phase 2 已连接 `pi-agent-core` 和 `pi-ai` 的 agent runtime：
+
+- CLI 使用 `pi-agent-core` 和 `pi-ai` 连接到 assistant runtime
+- 支持 `ANTHROPIC_API_KEY` 环境变量进行模型调用认证
+- 流式输出实时显示在 CLI 中
+- `get_time` 工具可用于获取当前时间
+- 工具调用状态清晰显示（带颜色标识）
+- SIGINT (Ctrl+C) 可优雅中止当前操作
+- 错误处理稳健，不会导致 CLI 崩溃
 
 - `--help` 显示用法
 - `--version` 显示版本
 - `--data-dir` 覆盖本地数据目录
-- 普通输入会返回占位回复，Phase 2 才会接入 `pi-agent-core` 和 `pi-ai`
+- 普通输入会发送到 agent runtime 并流式返回响应
 
 ## 设计原则
 

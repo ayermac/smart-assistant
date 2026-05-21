@@ -13,7 +13,7 @@ The v1 journey starts by turning the documented product direction into a runnabl
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation and CLI Skeleton** - Create the TypeScript project scaffold and terminal entry point.
-- [ ] **Phase 2: Agent Runtime and Tool Loop** - Connect CLI input to `pi-agent-core`, `pi-ai`, streaming output, and the first tool registry.
+- [x] **Phase 2: Agent Runtime and Tool Loop** - Connect CLI input to `pi-agent-core`, `pi-ai`, streaming output, and the first tool registry. (completed 2026-05-21)
 - [ ] **Phase 3: Local Session Persistence** - Save and resume assistant sessions locally.
 - [ ] **Phase 4: Long-term Memory** - Implement explicit remember and recall behavior.
 - [ ] **Phase 5: Markdown/Text RAG** - Ingest and search local Markdown/text knowledge.
@@ -63,8 +63,8 @@ Cross-cutting constraints:
 Plans:
 - [ ] 02-01: Inspect `../pi` integration points and select concrete package import strategy.
 - [ ] 02-02: Implement Assistant Controller and single agent runtime wiring.
-- [ ] 02-03: Implement tool registry and `get_time` tool contract.
-- [ ] 02-04: Add streaming CLI output and conservative failure handling.
+- [x] 02-03: Implement tool registry and `get_time` tool contract.
+- [x] 02-04: Add streaming CLI output and conservative failure handling.
 
 ### Phase 3: Local Session Persistence
 **Goal**: Persist assistant sessions locally and restore enough context to continue a previous conversation.
@@ -156,7 +156,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and CLI Skeleton | 3/3 | Complete | 2026-05-21 |
-| 2. Agent Runtime and Tool Loop | 0/4 | Not started | - |
+| 2. Agent Runtime and Tool Loop | 2/4 | Complete    | 2026-05-21 |
 | 3. Local Session Persistence | 0/3 | Not started | - |
 | 4. Long-term Memory | 0/3 | Not started | - |
 | 5. Markdown/Text RAG | 0/4 | Not started | - |

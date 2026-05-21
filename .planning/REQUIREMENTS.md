@@ -16,12 +16,12 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 
 ### Agent Runtime
 
-- [ ] **AGT-01**: CLI can send a user message into a single assistant agent loop.
-- [ ] **AGT-02**: Agent loop uses `pi-agent-core` for message state, tool calling, and event flow.
-- [ ] **AGT-03**: Model calls go through `pi-ai` instead of direct provider-specific code.
-- [ ] **AGT-04**: Assistant can stream response text to the CLI.
-- [ ] **AGT-05**: Assistant can call at least one local tool and include the tool result in the response.
-- [ ] **AGT-06**: Assistant follows the behavior rules in `.planning/research/SUMMARY.md`, including clarification and conservative failure behavior.
+- [x] **AGT-01**: CLI can send a user message into a single assistant agent loop.
+- [x] **AGT-02**: Agent loop uses `pi-agent-core` for message state, tool calling, and event flow.
+- [x] **AGT-03**: Model calls go through `pi-ai` instead of direct provider-specific code.
+- [x] **AGT-04**: Assistant can stream response text to the CLI.
+- [x] **AGT-05**: Assistant can call at least one local tool and include the tool result in the response.
+- [x] **AGT-06**: Assistant follows the behavior rules in `.planning/research/SUMMARY.md`, including clarification and conservative failure behavior.
 
 ### Session
 
@@ -55,9 +55,9 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 
 ### Tools
 
-- [ ] **TLS-01**: Tool registry exposes `remember`, `recall_memory`, `search_knowledge`, `create_plan`, `update_plan`, and `get_time`.
-- [ ] **TLS-02**: Every v1 tool has a stable input/output contract that can return success, empty result, or explainable error.
-- [ ] **TLS-03**: Tool implementations are local by default and do not require cloud services beyond model-provider calls.
+- [x] **TLS-01**: Tool registry exposes `remember`, `recall_memory`, `search_knowledge`, `create_plan`, `update_plan`, and `get_time`.
+- [x] **TLS-02**: Every v1 tool has a stable input/output contract that can return success, empty result, or explainable error.
+- [x] **TLS-03**: Tool implementations are local by default and do not require cloud services beyond model-provider calls.
 
 ### Evaluation
 
@@ -106,12 +106,12 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 | FND-02 | Phase 1 | Complete |
 | FND-03 | Phase 1 | Complete |
 | FND-04 | Phase 1 | Complete |
-| AGT-01 | Phase 2 | Pending |
-| AGT-02 | Phase 2 | Pending |
-| AGT-03 | Phase 2 | Pending |
-| AGT-04 | Phase 2 | Pending |
-| AGT-05 | Phase 2 | Pending |
-| AGT-06 | Phase 2 | Pending |
+| AGT-01 | Phase 2 | Complete |
+| AGT-02 | Phase 2 | Complete |
+| AGT-03 | Phase 2 | Complete |
+| AGT-04 | Phase 2 | Complete |
+| AGT-05 | Phase 2 | Complete |
+| AGT-06 | Phase 2 | Complete |
 | SES-01 | Phase 3 | Pending |
 | SES-02 | Phase 3 | Pending |
 | SES-03 | Phase 3 | Pending |
@@ -130,9 +130,9 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 | PLN-02 | Phase 6 | Pending |
 | PLN-03 | Phase 6 | Pending |
 | PLN-04 | Phase 6 | Pending |
-| TLS-01 | Phase 2 | Pending |
-| TLS-02 | Phase 2 | Pending |
-| TLS-03 | Phase 2 | Pending |
+| TLS-01 | Phase 2 | Complete |
+| TLS-02 | Phase 2 | Complete |
+| TLS-03 | Phase 2 | Complete |
 | EVAL-01 | Phase 7 | Pending |
 | EVAL-02 | Phase 7 | Pending |
 | EVAL-03 | Phase 7 | Pending |

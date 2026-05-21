@@ -93,23 +93,38 @@ async function runInteractive(options: CliOptions): Promise<void> {
   };
   process.on("SIGINT", sigintHandler);
 
+  // ANSI color codes
+  const GREEN = "\x1b[32m";
+  const RED = "\x1b[31m";
+  const RESET = "\x1b[0m";
+
+  // Track first text delta for each response
+  let isFirstDelta = true;
+
   // Event handler for assistant events
   function handleAssistantEvent(event: AssistantEvent): void {
     switch (event.type) {
       case "text_delta":
-        stdout.write(event.delta);
+        // Validate delta is non-empty before writing
+        if (event.delta && event.delta.length > 0) {
+          if (isFirstDelta) {
+            stdout.write("assistant> ");
+            isFirstDelta = false;
+          }
+          stdout.write(event.delta);
+        }
         break;
       case "error":
-        stderr.write(`Error: ${event.message}\n`);
+        stderr.write(`\n${RED}[Error: ${event.message}]${RESET}\n`);
         break;
       case "tool_start":
-        stdout.write(`[Calling tool: ${event.toolName}]\n`);
+        stdout.write(`\n[Tool: ${event.toolName}]`);
         break;
       case "tool_end":
         if (event.isError) {
-          stdout.write(`[Tool ${event.toolName} failed]\n`);
+          stdout.write(` ${RED}failed${RESET}\n`);
         } else {
-          stdout.write(`[Tool ${event.toolName} completed]\n`);
+          stdout.write(` ${GREEN}done${RESET}\n`);
         }
         break;
     }
@@ -129,7 +144,7 @@ async function runInteractive(options: CliOptions): Promise<void> {
         continue;
       }
 
-      stdout.write("assistant> ");
+      isFirstDelta = true;
       isPromptInProgress = true;
       try {
         await controller.prompt(message, handleAssistantEvent);

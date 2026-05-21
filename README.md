@@ -20,7 +20,39 @@
 - [.planning/STATE.md](.planning/STATE.md)：当前进度和会话延续状态
 - [.planning/research/SUMMARY.md](.planning/research/SUMMARY.md)：架构、工具、行为规范和评测用例摘要
 
-下一步：运行 `$gsd-plan-phase 1`，为 Phase 1 生成可执行计划。
+当前 Phase 1 已提供可运行的 TypeScript CLI 脚手架；下一步是进入 Phase 2，接入 `pi-agent-core` 和 `pi-ai` 的 agent runtime。
+
+## Quick Start
+
+```bash
+npm install
+npm run dev
+npm run typecheck
+npm run build
+node dist/cli.js --help
+```
+
+## Local Data
+
+默认数据目录是 `.smart-assistant`，可以通过 `SMART_ASSISTANT_DATA_DIR` 覆盖。
+
+Phase 1 约定的子目录：
+
+- `sessions`
+- `memory`
+- `knowledge`
+- `plans`
+
+`.env.example` 会列出 Phase 1 的环境变量占位。
+
+## Phase 1 Behavior
+
+Phase 1 只提供 CLI 脚手架和占位交互，不连接模型 provider。
+
+- `--help` 显示用法
+- `--version` 显示版本
+- `--data-dir` 覆盖本地数据目录
+- 普通输入会返回占位回复，Phase 2 才会接入 `pi-agent-core` 和 `pi-ai`
 
 ## 设计原则
 

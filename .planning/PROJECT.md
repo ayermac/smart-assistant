@@ -44,7 +44,7 @@
 
 ## Context
 
-项目规划统一收口到 GSD `.planning` 目录：
+项目规划统一收口到 GSD `.planning` 目录。Phase 1 已交付可运行的 TypeScript CLI 脚手架，后续 Phase 2 将接入 `pi-agent-core` 和 `pi-ai`。
 
 - `.planning/PROJECT.md`：项目定位、核心价值、约束和关键决策。
 - `.planning/REQUIREMENTS.md`：v1 需求、v2 延后项、非目标和 traceability。
@@ -98,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-21 after consolidating planning into .planning/*
+*Last updated: 2026-05-21 after completing Phase 1 scaffold execution*

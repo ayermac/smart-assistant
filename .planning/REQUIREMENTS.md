@@ -9,10 +9,10 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 
 ### Foundation
 
-- [ ] **FND-01**: Project has a TypeScript runtime scaffold with package scripts for local development, build, typecheck, and CLI execution.
-- [ ] **FND-02**: Project has a CLI entry that can start the assistant from the terminal.
-- [ ] **FND-03**: Project documents required environment variables and local data directories.
-- [ ] **FND-04**: Project keeps `.planning` artifacts and README aligned with implementation scope.
+- [x] **FND-01**: Project has a TypeScript runtime scaffold with package scripts for local development, build, typecheck, and CLI execution.
+- [x] **FND-02**: Project has a CLI entry that can start the assistant from the terminal.
+- [x] **FND-03**: Project documents required environment variables and local data directories.
+- [x] **FND-04**: Project keeps `.planning` artifacts and README aligned with implementation scope.
 
 ### Agent Runtime
 
@@ -102,10 +102,10 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
-| FND-04 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
+| FND-04 | Phase 1 | Complete |
 | AGT-01 | Phase 2 | Pending |
 | AGT-02 | Phase 2 | Pending |
 | AGT-03 | Phase 2 | Pending |
@@ -144,4 +144,4 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 
 ---
 *Requirements defined: 2026-05-21*
-*Last updated: 2026-05-21 after consolidating planning into .planning/*
+*Last updated: 2026-05-21 after completing Phase 1 scaffold execution*

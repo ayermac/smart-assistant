@@ -12,7 +12,7 @@ The v1 journey starts by turning the documented product direction into a runnabl
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation and CLI Skeleton** - Create the TypeScript project scaffold and terminal entry point.
+- [x] **Phase 1: Foundation and CLI Skeleton** - Create the TypeScript project scaffold and terminal entry point.
 - [ ] **Phase 2: Agent Runtime and Tool Loop** - Connect CLI input to `pi-agent-core`, `pi-ai`, streaming output, and the first tool registry.
 - [ ] **Phase 3: Local Session Persistence** - Save and resume assistant sessions locally.
 - [ ] **Phase 4: Long-term Memory** - Implement explicit remember and recall behavior.
@@ -35,13 +35,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 **Wave 1**
-- [ ] 01-01: Add package, TypeScript config, source layout, and development scripts.
+- [x] 01-01: Add package, TypeScript config, source layout, and development scripts.
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02: Implement minimal CLI command and startup flow.
+- [x] 01-02: Implement minimal CLI command and startup flow.
 
 **Wave 3** *(blocked on Waves 1 and 2 completion)*
-- [ ] 01-03: Document local setup, environment variables, and data directories.
+- [x] 01-03: Document local setup, environment variables, and data directories.
 
 Cross-cutting constraints:
 - Phase 1 must not recreate the legacy documentation directory.
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and CLI Skeleton | 0/3 | Not started | - |
+| 1. Foundation and CLI Skeleton | 3/3 | Complete | 2026-05-21 |
 | 2. Agent Runtime and Tool Loop | 0/4 | Not started | - |
 | 3. Local Session Persistence | 0/3 | Not started | - |
 | 4. Long-term Memory | 0/3 | Not started | - |

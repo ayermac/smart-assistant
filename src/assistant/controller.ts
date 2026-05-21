@@ -7,6 +7,7 @@
 
 import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
 import { getDefaultModel } from "../model.js";
+import { ALL_TOOLS } from "../tools/index.js";
 import type { AssistantEvent } from "./types.js";
 
 /**
@@ -39,13 +40,13 @@ export class AssistantController {
       throw new Error("ANTHROPIC_API_KEY environment variable is required");
     }
 
-    // Initialize agent with default model and system prompt
+    // Initialize agent with default model, system prompt, and tools
     this.agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model: getDefaultModel(),
         thinkingLevel: "off",
-        tools: [], // Tools will be added in Plan 02-03
+        tools: ALL_TOOLS,
         messages: [],
       },
     });

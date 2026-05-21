@@ -80,17 +80,16 @@ async function runInteractive(options: CliOptions): Promise<void> {
   stdout.write(`Set ${SMART_ASSISTANT_DATA_DIR_ENV} or pass --data-dir to change it.\n`);
   stdout.write("Type /help for commands.\n");
 
-  // Handle SIGINT for graceful shutdown
-  let isAborting = false;
+  // Handle SIGINT for graceful abort
+  let isPromptInProgress = false;
   const sigintHandler = () => {
-    if (isAborting) {
+    if (isPromptInProgress) {
+      controller.abort();
+      stdout.write("\n[Aborted]\n");
+    } else {
       rl.close();
       process.exit(0);
     }
-    isAborting = true;
-    stdout.write("\nAborting current request... Press Ctrl+C again to exit.\n");
-    controller.abort();
-    isAborting = false;
   };
   process.on("SIGINT", sigintHandler);
 
@@ -131,7 +130,9 @@ async function runInteractive(options: CliOptions): Promise<void> {
       }
 
       stdout.write("assistant> ");
+      isPromptInProgress = true;
       await controller.prompt(message, handleAssistantEvent);
+      isPromptInProgress = false;
       stdout.write("\n");
     }
   } finally {

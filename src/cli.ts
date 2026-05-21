@@ -131,8 +131,14 @@ async function runInteractive(options: CliOptions): Promise<void> {
 
       stdout.write("assistant> ");
       isPromptInProgress = true;
-      await controller.prompt(message, handleAssistantEvent);
-      isPromptInProgress = false;
+      try {
+        await controller.prompt(message, handleAssistantEvent);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        stderr.write(`\n[Error: ${errorMessage}]\n`);
+      } finally {
+        isPromptInProgress = false;
+      }
       stdout.write("\n");
     }
   } finally {

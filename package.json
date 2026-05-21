@@ -17,6 +17,11 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^0.75.4",
+    "@earendil-works/pi-agent-core": "^0.75.4",
+    "@sinclair/typebox": "^0.34.0"
+  },
   "devDependencies": {
     "@types/node": "^24.12.4",
     "tsx": "^4.22.1",

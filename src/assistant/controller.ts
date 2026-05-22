@@ -5,9 +5,10 @@
  * for the CLI to send messages and receive streaming events.
  */
 
-import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getDefaultModel } from "../model.js";
 import { ALL_TOOLS } from "../tools/index.js";
+import type { SessionStore } from "../session/types.js";
 import type { AssistantEvent } from "./types.js";
 
 /**
@@ -25,20 +26,34 @@ const SYSTEM_PROMPT = `You are a helpful local assistant. When uncertain, ask cl
  * - Validate API key availability
  * - Stream agent events to a callback
  * - Handle errors gracefully
+ * - Persist session messages after each agent turn
  */
 export class AssistantController {
   private readonly agent: Agent;
+  private readonly sessionStore: SessionStore;
+  private readonly sessionId: string;
+  private onEvent: ((event: AssistantEvent) => void) | null = null;
 
   /**
    * Creates a new AssistantController.
    *
+   * @param initialMessages - Messages to restore from a previous session
+   * @param sessionStore - Session persistence store
+   * @param sessionId - ID of the current session
    * @throws Error if ANTHROPIC_API_KEY is not set
    */
-  constructor() {
+  constructor(
+    initialMessages: AgentMessage[],
+    sessionStore: SessionStore,
+    sessionId: string
+  ) {
     // Validate API key before creating agent
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY environment variable is required");
     }
+
+    this.sessionStore = sessionStore;
+    this.sessionId = sessionId;
 
     // Initialize agent with default model, system prompt, and tools
     this.agent = new Agent({
@@ -47,8 +62,13 @@ export class AssistantController {
         model: getDefaultModel(),
         thinkingLevel: "off",
         tools: ALL_TOOLS,
-        messages: [],
+        messages: initialMessages,
       },
+    });
+
+    // Subscribe to agent events once in constructor (fixes duplicate subscription bug)
+    this.agent.subscribe((event: AgentEvent) => {
+      this.handleAgentEvent(event);
     });
   }
 
@@ -67,10 +87,8 @@ export class AssistantController {
       return;
     }
 
-    // Subscribe to agent events before calling prompt
-    this.agent.subscribe((event: AgentEvent) => {
-      this.handleAgentEvent(event, onEvent);
-    });
+    // Store callback for event routing
+    this.onEvent = onEvent;
 
     // Send message to agent
     await this.agent.prompt(trimmed);
@@ -84,32 +102,51 @@ export class AssistantController {
   }
 
   /**
+   * Get a copy of the current message array.
+   *
+   * @returns Copy of the agent's message array
+   */
+  getMessages(): AgentMessage[] {
+    return [...this.agent.state.messages];
+  }
+
+  /**
    * Handle agent events and convert to assistant events.
    */
-  private handleAgentEvent(event: AgentEvent, onEvent: (event: AssistantEvent) => void): void {
+  private handleAgentEvent(event: AgentEvent): void {
+    if (!this.onEvent) {
+      return;
+    }
+
     switch (event.type) {
       case "message_update": {
         const msgEvent = event.assistantMessageEvent;
         if (msgEvent.type === "text_delta") {
-          onEvent({ type: "text_delta", delta: msgEvent.delta });
+          this.onEvent({ type: "text_delta", delta: msgEvent.delta });
         }
         break;
       }
 
       case "message_end": {
         if (event.message.role === "assistant" && event.message.errorMessage) {
-          onEvent({ type: "error", message: event.message.errorMessage });
+          this.onEvent({ type: "error", message: event.message.errorMessage });
         }
         break;
       }
 
       case "tool_execution_start": {
-        onEvent({ type: "tool_start", toolName: event.toolName });
+        this.onEvent({ type: "tool_start", toolName: event.toolName });
         break;
       }
 
       case "tool_execution_end": {
-        onEvent({ type: "tool_end", toolName: event.toolName, isError: event.isError });
+        this.onEvent({ type: "tool_end", toolName: event.toolName, isError: event.isError });
+        break;
+      }
+
+      case "agent_end": {
+        // Persist session messages after agent finishes
+        void this.sessionStore.save(this.sessionId, event.messages);
         break;
       }
     }

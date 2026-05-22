@@ -32,14 +32,14 @@ export interface SessionStore {
   create(): SessionFile;
 
   /** Load a session by ID, returns null if not found. */
-  load(sessionId: string): SessionFile | null;
+  load(sessionId: string): Promise<SessionFile | null>;
 
   /** Save messages to an existing session. */
-  save(sessionId: string, messages: AgentMessage[]): void;
+  save(sessionId: string, messages: AgentMessage[]): Promise<void>;
 
   /** List all sessions sorted by timestamp (newest first). */
-  list(): SessionMeta[];
+  list(): Promise<SessionMeta[]>;
 
   /** Get the latest session, or null if none exist. */
-  getLatest(): SessionMeta | null;
+  getLatest(): Promise<SessionMeta | null>;
 }

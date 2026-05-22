@@ -128,9 +128,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: Define plan data model and local plan storage.
-- [ ] 06-02: Implement `create_plan` and `update_plan` tools.
-- [ ] 06-03: Add assistant routing rules for when to plan before answering.
+- [x] 06-01: Define plan data model and local plan storage.
+- [x] 06-02: Implement `create_plan` and `update_plan` tools.
+- [x] 06-03: Add assistant routing rules for when to plan before answering.
 
 ### Phase 7: Evaluation and Release Readiness
 **Goal**: Turn the documented acceptance cases into a repeatable evaluation flow and close v1 reliability gaps.
@@ -160,5 +160,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Local Session Persistence | 3/3 | Complete | 2026-05-22 |
 | 4. Long-term Memory | 3/3 | Complete | 2026-05-22 |
 | 5. Markdown/Text RAG | 4/4 | Complete | 2026-05-22 |
-| 6. Planning Tools | 0/3 | Not started | - |
+| 6. Planning Tools | 3/3 | Planned | 2026-05-22 |
 | 7. Evaluation and Release Readiness | 0/3 | Not started | - |

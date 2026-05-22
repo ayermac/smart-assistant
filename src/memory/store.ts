@@ -133,33 +133,36 @@ export class FileMemoryStore implements MemoryStore {
 
   /**
    * Expand query with semantic equivalents for better matching.
+   * Uses general synonym expansion rather than hardcoded patterns.
    */
   private expandQuery(query: string): string[] {
     const expansions: string[] = [query];
 
-    // Semantic mappings: natural language -> keywords
-    const semanticMap: Record<string, string[]> = {
-      "你是谁": ["名字", "身份", "是谁"],
-      "你是": ["名字", "身份"],
-      "谁": ["名字", "身份"],
-      "你叫什么": ["名字", "称呼"],
-      "叫什么名字": ["名字"],
-      "你的名字": ["名字"],
-      "叫什么": ["名字"],
-      "你是什么": ["名字", "身份"],
-      "告诉我你是谁": ["名字", "身份"],
-      "介绍一下你自己": ["名字", "身份", "助手"],
-      "自我介绍": ["名字", "身份", "助手"],
-    };
+    // General synonym groups for common query concepts
+    // Each group contains words that are semantically related
+    const synonymGroups = [
+      // Identity/Name related
+      ["名字", "称呼", "叫什么", "是谁", "身份", "谁"],
+      // Self-reference
+      ["你", "助手", "自己"],
+      // Preference related
+      ["喜欢", "偏好", "爱好", "最爱"],
+      // Time related
+      ["时间", "时候", "日期"],
+      // Location related
+      ["在哪", "位置", "地点", "地址"],
+    ];
 
-    // Check if query matches any semantic pattern
-    for (const [pattern, keywords] of Object.entries(semanticMap)) {
-      if (query.includes(pattern)) {
-        expansions.push(...keywords);
+    // Find which synonym groups the query intersects with
+    for (const group of synonymGroups) {
+      const hasMatch = group.some((word) => query.includes(word));
+      if (hasMatch) {
+        // Add all words from this group as potential matches
+        expansions.push(...group);
       }
     }
 
-    // Also add individual words from query
+    // Also add individual words from query (for partial matching)
     const words = query.split(/\s+/).filter((w) => w.length > 1);
     expansions.push(...words);
 

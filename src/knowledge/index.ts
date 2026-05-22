@@ -11,3 +11,6 @@ export type {
   KnowledgeManifest,
   KnowledgeStore,
 } from "./types.js";
+
+export { FileKnowledgeStore, type FileKnowledgeStoreConfig } from "./store.js";
+export { chunkFile, SUPPORTED_EXTENSIONS, isSupportedExtension } from "./chunker.js";

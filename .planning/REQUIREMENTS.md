@@ -61,9 +61,9 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 
 ### Evaluation
 
-- [ ] **EVAL-01**: Project has an evaluation harness or manual script covering the 10 cases in `.planning/research/SUMMARY.md`.
-- [ ] **EVAL-02**: At least 8 of 10 acceptance cases pass reliably for the v1 release.
-- [ ] **EVAL-03**: Evaluation distinguishes chat, memory, RAG, planning, tool failure, and session restore behavior.
+- [x] **EVAL-01**: Project has an evaluation harness or manual script covering the 10 cases in `.planning/research/SUMMARY.md`.
+- [x] **EVAL-02**: At least 8 of 10 acceptance cases pass reliably for the v1 release.
+- [x] **EVAL-03**: Evaluation distinguishes chat, memory, RAG, planning, tool failure, and session restore behavior.
 
 ## v2 Requirements
 
@@ -133,9 +133,9 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 | TLS-01 | Phase 2 | Complete |
 | TLS-02 | Phase 2 | Complete |
 | TLS-03 | Phase 2 | Complete |
-| EVAL-01 | Phase 7 | Pending |
-| EVAL-02 | Phase 7 | Pending |
-| EVAL-03 | Phase 7 | Pending |
+| EVAL-01 | Phase 7 | Complete |
+| EVAL-02 | Phase 7 | Complete |
+| EVAL-03 | Phase 7 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total

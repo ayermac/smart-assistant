@@ -126,10 +126,10 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 | RAG-04 | Phase 5 | Pending |
 | RAG-05 | Phase 5 | Pending |
 | RAG-06 | Phase 5 | Pending |
-| PLN-01 | Phase 6 | Pending |
-| PLN-02 | Phase 6 | Pending |
-| PLN-03 | Phase 6 | Pending |
-| PLN-04 | Phase 6 | Pending |
+| PLN-01 | Phase 6 | Complete |
+| PLN-02 | Phase 6 | Complete |
+| PLN-03 | Phase 6 | Complete |
+| PLN-04 | Phase 6 | Complete |
 | TLS-01 | Phase 2 | Complete |
 | TLS-02 | Phase 2 | Complete |
 | TLS-03 | Phase 2 | Complete |

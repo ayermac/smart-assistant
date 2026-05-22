@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Local Session Persistence** - Save and resume assistant sessions locally. (completed 2026-05-22)
 - [x] **Phase 4: Long-term Memory** - Implement explicit remember and recall behavior. (completed 2026-05-22)
 - [x] **Phase 5: Markdown/Text RAG** - Ingest and search local Markdown/text knowledge. (completed 2026-05-22)
-- [ ] **Phase 6: Planning Tools** - Add structured task planning and plan state updates.
+- [x] **Phase 6: Planning Tools** - Add structured task planning and plan state updates. (completed 2026-05-22)
 - [ ] **Phase 7: Evaluation and Release Readiness** - Verify the documented acceptance cases and harden failure behavior.
 
 ## Phase Details
@@ -160,5 +160,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Local Session Persistence | 3/3 | Complete | 2026-05-22 |
 | 4. Long-term Memory | 3/3 | Complete | 2026-05-22 |
 | 5. Markdown/Text RAG | 4/4 | Complete | 2026-05-22 |
-| 6. Planning Tools | 3/3 | Planned | 2026-05-22 |
+| 6. Planning Tools | 3/3 | Complete | 2026-05-22 |
 | 7. Evaluation and Release Readiness | 0/3 | Not started | - |

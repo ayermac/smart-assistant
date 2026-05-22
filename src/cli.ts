@@ -5,8 +5,9 @@ import { dirname, resolve } from "node:path";
 import { stdin, stdout, stderr } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveDataDir, SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
+import { resolveDataDir, resolveDataPaths, SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
 import { AssistantController, type AssistantEvent } from "./assistant/index.js";
+import { FileSessionStore, type SessionFile } from "./session/index.js";
 
 type CliOptions = {
   dataDir?: string;
@@ -81,6 +82,44 @@ async function readPackageVersion(): Promise<string> {
   const packagePath = resolve(dirname(fileURLToPath(import.meta.url)), "../package.json");
   const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as { version?: string };
   return packageJson.version ?? "0.0.0";
+}
+
+/**
+ * Resolve session based on CLI options.
+ *
+ * Priority:
+ * 1. If sessionId provided: load that session or throw error
+ * 2. If newSession true: create new session
+ * 3. Default: load latest or create new if none exist
+ */
+async function resolveSession(
+  options: CliOptions,
+  store: FileSessionStore
+): Promise<{ session: SessionFile; isNew: boolean }> {
+  // Explicit session ID
+  if (options.sessionId) {
+    const session = await store.load(options.sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${options.sessionId}`);
+    }
+    return { session, isNew: false };
+  }
+
+  // Explicit new session
+  if (options.newSession) {
+    return { session: store.create(), isNew: true };
+  }
+
+  // Default: resume latest or create new
+  const latest = await store.getLatest();
+  if (latest) {
+    const session = await store.load(latest.id);
+    if (session) {
+      return { session, isNew: false };
+    }
+  }
+
+  return { session: store.create(), isNew: true };
 }
 
 async function runInteractive(options: CliOptions): Promise<void> {

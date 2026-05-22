@@ -7,7 +7,8 @@
 
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getDefaultModel } from "../model.js";
-import { ALL_TOOLS } from "../tools/index.js";
+import { createAllTools } from "../tools/index.js";
+import { FileMemoryStore } from "../memory/index.js";
 import type { SessionStore } from "../session/types.js";
 import type { AssistantEvent } from "./types.js";
 
@@ -15,8 +16,16 @@ import type { AssistantEvent } from "./types.js";
  * System prompt for the smart-assistant.
  *
  * Emphasizes clarification and conservative failure behavior as per AGT-06.
+ * Phase 4 adds memory behavior rules (MEM-04, MEM-05).
  */
-const SYSTEM_PROMPT = `You are a helpful local assistant. When uncertain, ask clarifying questions. If you cannot answer confidently, say so.`;
+const SYSTEM_PROMPT = `You are a helpful local assistant. When uncertain, ask clarifying questions. If you cannot answer confidently, say so.
+
+You have access to a \`remember\` tool for storing long-term facts and preferences.
+Only use it when the user explicitly asks you to remember something.
+Do not automatically store conversation turns as memories.
+
+When recalling memories, cite the memory content clearly in your response.
+Distinguish information from memory vs knowledge search when relevant.`;
 
 /**
  * AssistantController manages the agent runtime and processes user messages.
@@ -40,28 +49,34 @@ export class AssistantController {
    * @param initialMessages - Messages to restore from a previous session
    * @param sessionStore - Session persistence store
    * @param sessionId - ID of the current session
-   * @throws Error if ANTHROPIC_API_KEY is not set
+   * @throws Error if required API key is not set
    */
   constructor(
     initialMessages: AgentMessage[],
     sessionStore: SessionStore,
     sessionId: string
   ) {
-    // Validate API key before creating agent
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error("ANTHROPIC_API_KEY environment variable is required");
+    // Validate API key based on provider
+    const provider = process.env.SMART_ASSISTANT_PROVIDER?.trim() || "anthropic";
+    const apiKeyEnv = provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
+
+    if (!process.env[apiKeyEnv]) {
+      throw new Error(`${apiKeyEnv} environment variable is required for provider "${provider}"`);
     }
 
     this.sessionStore = sessionStore;
     this.sessionId = sessionId;
 
-    // Initialize agent with default model, system prompt, and tools
+    // Create memory store
+    const memoryStore = new FileMemoryStore();
+
+    // Initialize agent with memory-enabled tools
     this.agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model: getDefaultModel(),
         thinkingLevel: "off",
-        tools: ALL_TOOLS,
+        tools: createAllTools(memoryStore),
         messages: initialMessages,
       },
     });

@@ -1,0 +1,17 @@
+{
+  "agents": [
+    {
+      "agent_id": "a33b47ecc95475932",
+      "agent_type": "gsd-plan-checker",
+      "started_at": "2026-05-22T03:46:01.406Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-05-22T03:49:11.202Z",
+      "duration_ms": 189796
+    }
+  ],
+  "total_spawned": 1,
+  "total_completed": 1,
+  "total_failed": 0,
+  "last_updated": "2026-05-22T04:26:47.311Z"
+}

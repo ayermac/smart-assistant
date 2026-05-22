@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+// Load environment variables from .env file
+import { config } from "dotenv";
+config();
+
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { stdin, stdout, stderr } from "node:process";

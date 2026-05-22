@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_discuss
-stopped_at: Phase 3 complete — ready to discuss Phase 4
-last_updated: 2026-05-22T01:35:00.000Z
-last_activity: 2026-05-22 -- Phase 3 execution complete
+status: phase_complete
+stopped_at: Phase 4 complete — ready for verification
+last_updated: 2026-05-22T15:30:00.000Z
+last_activity: 2026-05-22 -- Phase 4 execution complete
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 10
-  percent: 43
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 13
+  percent: 57
 ---
 
 # Project State
@@ -21,24 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** 用户可以在 CLI 里用一个稳定入口，让助手记住明确的长期信息、检索本地知识，并把任务拆解成可执行步骤。
-**Current focus:** Phase 4 — long-term memory
+**Current focus:** Phase 5 — RAG Knowledge Base (next phase)
 
 ## Current Position
 
-Phase: 4 of 7 (long-term memory)
-Plan: Not started
-Status: Ready to discuss
+Phase: 4 of 7 (long-term memory) ✅ COMPLETE
+Status: Phase complete — ready for verification
 Last activity: 2026-05-22
 
-Progress: [██████████] 100% for Phase 1, [██████████] 100% for Phase 2, [██████████] 100% for Phase 3
+Progress: [██████████] 100% for Phase 1, [██████████] 100% for Phase 2, [██████████] 100% for Phase 3, [██████████] 100% for Phase 4
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 8
 - Average duration: ~10 min
-- Total execution time: ~0.5 hours
+- Total execution time: ~0.6 hours
 
 **By Phase:**
 
@@ -46,11 +45,13 @@ Progress: [██████████] 100% for Phase 1, [██████
 |-------|-------|-------|----------|
 | 1 | 3/3 | ~31 min | ~10 min |
 | 2 | 2 | - | - |
+| 3 | 2 | - | - |
+| 4 | 3 | ~15 min | ~5 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01, 01-02, 01-03
-- Trend: On track
+- Last 5 plans: 04-01, 04-02, 04-03
+- Trend: Ahead of schedule (fast execution)
 
 *Updated after each plan completion*
 
@@ -66,6 +67,7 @@ Recent decisions affecting current work:
 - Initialization: RAG v1 supports local Markdown/text only.
 - Phase 1 planning: Scaffold first, placeholder CLI second, documentation third.
 - Phase 1 execution: Runtime integration remains deferred; the CLI returns a placeholder until Phase 2 wires `pi-agent-core` and `pi-ai`.
+- Phase 4 execution: Memory storage uses JSON files with UUID IDs, retrieved via keyword + tag matching.
 
 ### Pending Todos
 
@@ -85,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-22 01:35
-Stopped at: Phase 3 complete — ready to discuss Phase 4
-Resume file: .planning/phases/03-local-session-persistence/03-VERIFICATION.md
+Last session: 2026-05-22 15:30
+Stopped at: Phase 4 complete — ready for verification
+Resume file: .planning/phases/05-rag-knowledge-base/05-CONTEXT.md (to be created)

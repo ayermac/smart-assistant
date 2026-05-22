@@ -25,9 +25,9 @@ Requirements for the first local-first CLI assistant release. Each requirement m
 
 ### Session
 
-- [ ] **SES-01**: Assistant persists session messages and minimal session metadata locally.
-- [ ] **SES-02**: User can resume a previous session by session id or latest-session default.
-- [ ] **SES-03**: Restored sessions include enough context for the assistant to continue coherently.
+- [x] **SES-01**: Assistant persists session messages and minimal session metadata locally.
+- [x] **SES-02**: User can resume a previous session by session id or latest-session default.
+- [x] **SES-03**: Restored sessions include enough context for the assistant to continue coherently.
 
 ### Memory
 
@@ -112,9 +112,9 @@ Explicitly excluded from v1. Documented to prevent scope creep.
 | AGT-04 | Phase 2 | Complete |
 | AGT-05 | Phase 2 | Complete |
 | AGT-06 | Phase 2 | Complete |
-| SES-01 | Phase 3 | Pending |
-| SES-02 | Phase 3 | Pending |
-| SES-03 | Phase 3 | Pending |
+| SES-01 | Phase 3 | Complete |
+| SES-02 | Phase 3 | Complete |
+| SES-03 | Phase 3 | Complete |
 | MEM-01 | Phase 4 | Pending |
 | MEM-02 | Phase 4 | Pending |
 | MEM-03 | Phase 4 | Pending |

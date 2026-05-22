@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation and CLI Skeleton** - Create the TypeScript project scaffold and terminal entry point.
 - [x] **Phase 2: Agent Runtime and Tool Loop** - Connect CLI input to `pi-agent-core`, `pi-ai`, streaming output, and the first tool registry. (completed 2026-05-21)
-- [ ] **Phase 3: Local Session Persistence** - Save and resume assistant sessions locally.
+- [x] **Phase 3: Local Session Persistence** - Save and resume assistant sessions locally. (completed 2026-05-22)
 - [ ] **Phase 4: Long-term Memory** - Implement explicit remember and recall behavior.
 - [ ] **Phase 5: Markdown/Text RAG** - Ingest and search local Markdown/text knowledge.
 - [ ] **Phase 6: Planning Tools** - Add structured task planning and plan state updates.
@@ -157,7 +157,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. Foundation and CLI Skeleton | 3/3 | Complete | 2026-05-21 |
 | 2. Agent Runtime and Tool Loop | 2/4 | Complete    | 2026-05-21 |
-| 3. Local Session Persistence | 0/3 | Not started | - |
+| 3. Local Session Persistence | 3/3 | Complete | 2026-05-22 |
 | 4. Long-term Memory | 0/3 | Not started | - |
 | 5. Markdown/Text RAG | 0/4 | Not started | - |
 | 6. Planning Tools | 0/3 | Not started | - |

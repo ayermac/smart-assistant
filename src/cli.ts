@@ -124,11 +124,29 @@ async function resolveSession(
 
 async function runInteractive(options: CliOptions): Promise<void> {
   const dataDir = options.dataDir ?? resolveDataDir();
+  const dataPaths = resolveDataPaths(process.env);
 
-  // Initialize assistant controller
+  // Create session store
+  const sessionStore = new FileSessionStore(dataPaths.sessions);
+
+  // Resolve session (new or resume)
+  let session: SessionFile;
+  let isNew: boolean;
+  try {
+    const resolved = await resolveSession(options, sessionStore);
+    session = resolved.session;
+    isNew = resolved.isNew;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    stderr.write(`Error: ${message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Initialize assistant controller with session
   let controller: AssistantController;
   try {
-    controller = new AssistantController();
+    controller = new AssistantController(session.messages, sessionStore, session.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`Error: ${message}\n`);
@@ -140,6 +158,11 @@ async function runInteractive(options: CliOptions): Promise<void> {
 
   stdout.write("smart-assistant local CLI\n");
   stdout.write(`Data dir: ${dataDir}\n`);
+  if (isNew) {
+    stdout.write(`New session: ${session.id}\n`);
+  } else {
+    stdout.write(`Resumed session: ${session.id} (${session.messages.length} messages)\n`);
+  }
   stdout.write(`Set ${SMART_ASSISTANT_DATA_DIR_ENV} or pass --data-dir to change it.\n`);
   stdout.write("Type /help for commands.\n");
 

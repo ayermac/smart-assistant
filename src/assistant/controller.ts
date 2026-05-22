@@ -9,6 +9,7 @@ import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-ag
 import { getDefaultModel } from "../model.js";
 import { createAllTools } from "../tools/index.js";
 import { FileMemoryStore } from "../memory/index.js";
+import { FileKnowledgeStore } from "../knowledge/index.js";
 import type { SessionStore } from "../session/types.js";
 import type { AssistantEvent } from "./types.js";
 
@@ -25,7 +26,13 @@ Only use it when the user explicitly asks you to remember something.
 Do not automatically store conversation turns as memories.
 
 When recalling memories, cite the memory content clearly in your response.
-Distinguish information from memory vs knowledge search when relevant.`;
+Distinguish information from memory vs knowledge search when relevant.
+
+You have access to a \`search_knowledge\` tool for searching the local Markdown/text knowledge base.
+Use it when the user asks about information that might be in their notes or documents.
+When citing knowledge search results, use the format: According to \`path > heading\`...
+If the knowledge base does not contain relevant information for the user's question, state explicitly: "The local knowledge base does not contain information about [topic]."
+Do not fabricate knowledge base content. Only report what the search_knowledge tool returns.`;
 
 /**
  * AssistantController manages the agent runtime and processes user messages.
@@ -70,13 +77,16 @@ export class AssistantController {
     // Create memory store
     const memoryStore = new FileMemoryStore();
 
-    // Initialize agent with memory-enabled tools
+    // Create knowledge store
+    const knowledgeStore = new FileKnowledgeStore();
+
+    // Initialize agent with memory and knowledge tools
     this.agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model: getDefaultModel(),
         thinkingLevel: "off",
-        tools: createAllTools(memoryStore),
+        tools: createAllTools(memoryStore, knowledgeStore),
         messages: initialMessages,
       },
     });

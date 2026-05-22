@@ -10,6 +10,7 @@ import { getDefaultModel } from "../model.js";
 import { createAllTools } from "../tools/index.js";
 import { FileMemoryStore } from "../memory/index.js";
 import { FileKnowledgeStore } from "../knowledge/index.js";
+import { FilePlanStore } from "../planning/index.js";
 import type { SessionStore } from "../session/types.js";
 import type { AssistantEvent } from "./types.js";
 
@@ -32,7 +33,16 @@ You have access to a \`search_knowledge\` tool for searching the local Markdown/
 Use it when the user asks about information that might be in their notes or documents.
 When citing knowledge search results, use the format: According to \`path > heading\`...
 If the knowledge base does not contain relevant information for the user's question, state explicitly: "The local knowledge base does not contain information about [topic]."
-Do not fabricate knowledge base content. Only report what the search_knowledge tool returns.`;
+Do not fabricate knowledge base content. Only report what the search_knowledge tool returns.
+
+You have access to planning tools (\`create_plan\`, \`update_plan\`) for breaking down complex tasks.
+When the user asks for help with a multi-step task or complex goal, consider using \`create_plan\` to structure the approach first.
+Use planning when:
+- The task has multiple distinct steps
+- The user wants to track progress over time
+- The task benefits from sequential execution
+After completing a step, use \`update_plan\` to mark it as completed.
+When all steps are done, the plan will be marked as completed automatically.`;
 
 /**
  * AssistantController manages the agent runtime and processes user messages.
@@ -80,13 +90,16 @@ export class AssistantController {
     // Create knowledge store
     const knowledgeStore = new FileKnowledgeStore();
 
-    // Initialize agent with memory and knowledge tools
+    // Create plan store
+    const planStore = new FilePlanStore();
+
+    // Initialize agent with memory, knowledge, and planning tools
     this.agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model: getDefaultModel(),
         thinkingLevel: "off",
-        tools: createAllTools(memoryStore, knowledgeStore),
+        tools: createAllTools(memoryStore, knowledgeStore, planStore),
         messages: initialMessages,
       },
     });

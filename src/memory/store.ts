@@ -78,8 +78,11 @@ export class FileMemoryStore implements MemoryStore {
       );
     }
 
-    // Step 2: Score by keyword match
+    // Step 2: Expand query with semantic equivalents
     const queryLower = query.toLowerCase();
+    const expandedQueries = this.expandQuery(queryLower);
+
+    // Step 3: Score by keyword match
     const matches: MemoryMatch[] = [];
 
     for (const entry of candidates) {
@@ -87,28 +90,31 @@ export class FileMemoryStore implements MemoryStore {
       let score = 0;
       const reasons: string[] = [];
 
-      // Check for substring match
-      if (textLower.includes(queryLower)) {
-        score += 10;
-        reasons.push("text match");
-      }
+      // Check each expanded query variant
+      for (const expandedQuery of expandedQueries) {
+        // Check for substring match
+        if (textLower.includes(expandedQuery)) {
+          score += 10;
+          reasons.push("text match");
+        }
 
-      // Check for word overlap
-      const queryWords = queryLower.split(/\s+/);
-      const textWords = textLower.split(/\s+/);
-      const wordOverlap = queryWords.filter((w) => textWords.includes(w)).length;
-      if (wordOverlap > 0) {
-        score += wordOverlap;
-        reasons.push(`${wordOverlap} word(s) matched`);
-      }
+        // Check for word overlap
+        const queryWords = expandedQuery.split(/\s+/);
+        const textWords = textLower.split(/\s+/);
+        const wordOverlap = queryWords.filter((w) => textWords.includes(w)).length;
+        if (wordOverlap > 0) {
+          score += wordOverlap;
+          reasons.push(`${wordOverlap} word(s) matched`);
+        }
 
-      // Check for tag overlap
-      const tagOverlap = entry.tags.filter((t) =>
-        queryLower.includes(t.toLowerCase())
-      ).length;
-      if (tagOverlap > 0) {
-        score += tagOverlap * 2;
-        reasons.push("tag match");
+        // Check for tag overlap
+        const tagOverlap = entry.tags.filter((t) =>
+          expandedQuery.includes(t.toLowerCase())
+        ).length;
+        if (tagOverlap > 0) {
+          score += tagOverlap * 2;
+          reasons.push("tag match");
+        }
       }
 
       if (score > 0) {
@@ -120,9 +126,44 @@ export class FileMemoryStore implements MemoryStore {
       }
     }
 
-    // Step 3: Sort by score descending, return top N
+    // Step 4: Sort by score descending, return top N
     matches.sort((a, b) => b.relevanceScore - a.relevanceScore);
     return matches.slice(0, limit);
+  }
+
+  /**
+   * Expand query with semantic equivalents for better matching.
+   */
+  private expandQuery(query: string): string[] {
+    const expansions: string[] = [query];
+
+    // Semantic mappings: natural language -> keywords
+    const semanticMap: Record<string, string[]> = {
+      "你是谁": ["名字", "身份", "是谁"],
+      "你是": ["名字", "身份"],
+      "谁": ["名字", "身份"],
+      "你叫什么": ["名字", "称呼"],
+      "叫什么名字": ["名字"],
+      "你的名字": ["名字"],
+      "叫什么": ["名字"],
+      "你是什么": ["名字", "身份"],
+      "告诉我你是谁": ["名字", "身份"],
+      "介绍一下你自己": ["名字", "身份", "助手"],
+      "自我介绍": ["名字", "身份", "助手"],
+    };
+
+    // Check if query matches any semantic pattern
+    for (const [pattern, keywords] of Object.entries(semanticMap)) {
+      if (query.includes(pattern)) {
+        expansions.push(...keywords);
+      }
+    }
+
+    // Also add individual words from query
+    const words = query.split(/\s+/).filter((w) => w.length > 1);
+    expansions.push(...words);
+
+    return [...new Set(expansions)]; // Dedupe
   }
 
   async get(id: string): Promise<MemoryEntry | null> {

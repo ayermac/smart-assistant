@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cat > /tmp/test-memory.ts << 'EOF'\\nimport { FileMemoryStore } from './src/memory/store.js';\\n\\nasync function test() {\\n  const store = new FileMemoryStore('./.smart-assistant/memory');\\n...",
+  "error": "Exit code 1\nnode:internal/modules/cjs/loader:1383\n  const err = new Error(message);\n              ^\n\nError: Cannot find module './src/memory/store.js'\nRequire stack:\n- /private/tmp/test-memory.ts\n    at node:internal/modules/cjs/loader:1383:15\n    at nextResolveSimple (/Users/chenchao/Workspace/agent-learn/smart-assistant/node_modules/.pnpm/tsx@4.22.3/node_modules/tsx/dist/register-BOkp8V6j.cjs:10:1017)\n    at /Users/chenchao/Workspace/agent-learn/smart-assistant/node_modules/.pnpm/tsx@4.22.3/no...",
+  "timestamp": "2026-05-22T12:16:33.513Z",
+  "retry_count": 1
+}

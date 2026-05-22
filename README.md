@@ -67,6 +67,47 @@ Phase 2 已连接 `pi-agent-core` 和 `pi-ai` 的 agent runtime：
 - `--data-dir` 覆盖本地数据目录
 - 普通输入会发送到 agent runtime 并流式返回响应
 
+## Evaluation
+
+Smart Assistant v1 includes an automated evaluation suite covering 10 acceptance cases:
+
+| Case | Description | Status |
+|------|-------------|--------|
+| 1 | Chat response | ✅ |
+| 2 | Memory storage | ✅ |
+| 3 | Memory recall | ✅ |
+| 4 | RAG retrieval | ✅ |
+| 5 | RAG miss handling | ✅ |
+| 6 | Planning decomposition | ✅ |
+| 7 | Planning status update | ✅ |
+| 8 | Tool failure handling | ✅ |
+| 9 | Long context | ✅ |
+| 10 | Session restore | ✅ |
+
+**Pass Rate: 10/10 (100%)** - All acceptance criteria met.
+
+Run evaluation: `npm run eval`
+
+## Development
+
+```bash
+# Run evaluation suite
+npm run eval
+
+# View evaluation report
+cat .planning/evaluation-report.md
+
+# View detailed evaluation summary
+cat .planning/evaluation-summary.md
+```
+
+## Known Limitations
+
+- RAG is limited to Markdown and text files (PDF, docx, web crawling excluded)
+- No cloud sync - all data is local-first
+- Single-user scope (no multi-tenant support)
+- CLI-only interface (Web UI/API planned for v2)
+
 ## 设计原则
 
 - 先做单 agent，再考虑多 agent

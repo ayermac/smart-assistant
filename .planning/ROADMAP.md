@@ -15,8 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation and CLI Skeleton** - Create the TypeScript project scaffold and terminal entry point.
 - [x] **Phase 2: Agent Runtime and Tool Loop** - Connect CLI input to `pi-agent-core`, `pi-ai`, streaming output, and the first tool registry. (completed 2026-05-21)
 - [x] **Phase 3: Local Session Persistence** - Save and resume assistant sessions locally. (completed 2026-05-22)
-- [ ] **Phase 4: Long-term Memory** - Implement explicit remember and recall behavior.
-- [ ] **Phase 5: Markdown/Text RAG** - Ingest and search local Markdown/text knowledge.
+- [x] **Phase 4: Long-term Memory** - Implement explicit remember and recall behavior. (completed 2026-05-22)
+- [x] **Phase 5: Markdown/Text RAG** - Ingest and search local Markdown/text knowledge. (completed 2026-05-22)
 - [ ] **Phase 6: Planning Tools** - Add structured task planning and plan state updates.
 - [ ] **Phase 7: Evaluation and Release Readiness** - Verify the documented acceptance cases and harden failure behavior.
 
@@ -94,9 +94,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: Implement memory storage and `remember` tool.
-- [ ] 04-02: Implement memory retrieval and `recall_memory` tool.
-- [ ] 04-03: Integrate memory context assembly and memory-specific evaluations.
+- [x] 04-01: Implement memory storage and `remember` tool.
+- [x] 04-02: Implement memory retrieval and `recall_memory` tool.
+- [x] 04-03: Integrate memory context assembly and memory-specific evaluations.
 
 ### Phase 5: Markdown/Text RAG
 **Goal**: Add local Markdown/text knowledge ingestion and retrieval with source-aware, conservative answering.
@@ -111,10 +111,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 05-01: Implement knowledge directory configuration and file discovery.
-- [ ] 05-02: Implement Markdown/text chunking and local index storage.
-- [ ] 05-03: Implement `search_knowledge` retrieval with source metadata.
-- [ ] 05-04: Integrate RAG context and empty-result behavior into assistant responses.
+- [x] 05-01: Implement knowledge directory configuration and file discovery.
+- [x] 05-02: Implement Markdown/text chunking and local index storage.
+- [x] 05-03: Implement `search_knowledge` retrieval with source metadata.
+- [x] 05-04: Integrate RAG context and empty-result behavior into assistant responses.
 
 ### Phase 6: Planning Tools
 **Goal**: Let the assistant create structured task plans, update step status, and persist plan state for continuation.
@@ -158,7 +158,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Foundation and CLI Skeleton | 3/3 | Complete | 2026-05-21 |
 | 2. Agent Runtime and Tool Loop | 2/4 | Complete    | 2026-05-21 |
 | 3. Local Session Persistence | 3/3 | Complete | 2026-05-22 |
-| 4. Long-term Memory | 0/3 | Not started | - |
-| 5. Markdown/Text RAG | 0/4 | Not started | - |
+| 4. Long-term Memory | 3/3 | Complete | 2026-05-22 |
+| 5. Markdown/Text RAG | 4/4 | Complete | 2026-05-22 |
 | 6. Planning Tools | 0/3 | Not started | - |
 | 7. Evaluation and Release Readiness | 0/3 | Not started | - |

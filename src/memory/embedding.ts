@@ -21,10 +21,14 @@ export interface EmbeddingConfig {
  * Default embedding configuration from environment variables.
  */
 export function createDefaultEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): EmbeddingConfig {
+  // Use OPENAI_API_KEY if available (for Doubao/OpenAI-compatible endpoints)
+  // Fall back to ANTHROPIC_API_KEY for backwards compatibility
+  const apiKey = env.OPENAI_API_KEY || env.ANTHROPIC_API_KEY || "";
+
   return {
     baseUrl: env.EMBEDDING_BASE_URL || "https://ark.cn-beijing.volces.com/api/coding/v3",
     model: env.EMBEDDING_MODEL || "doubao-embedding-vision",
-    apiKey: env.ANTHROPIC_API_KEY || "", // Share API key with assistant
+    apiKey,
   };
 }
 

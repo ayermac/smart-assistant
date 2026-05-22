@@ -21,8 +21,9 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.75.4",
     "@earendil-works/pi-ai": "^0.75.4",
+    "@lancedb/lancedb": "^0.29.0",
     "@sinclair/typebox": "^0.34.0",
-    "chromadb": "^3.4.3",
+    "apache-arrow": "^21.1.0",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {

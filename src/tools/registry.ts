@@ -5,6 +5,7 @@
  * Phase 4 adds memory tools (remember, recall_memory).
  * Phase 5 adds knowledge tool (search_knowledge).
  * Phase 6 adds planning tools (create_plan, update_plan).
+ * Phase 7 adds mock_failure tool for testing error handling.
  */
 
 import { get_time } from "./get_time.js";
@@ -17,6 +18,7 @@ import {
   createCreatePlanTool,
   createUpdatePlanTool,
 } from "./planning.js";
+import { mock_failure } from "./mock-failure.js";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { MemoryStore } from "../memory/types.js";
 import type { KnowledgeStore } from "../knowledge/types.js";
@@ -39,6 +41,7 @@ export function createAllTools(
     get_time,
     createRememberTool(memoryStore),
     createRecallMemoryTool(memoryStore),
+    mock_failure, // Always available for testing error handling
   ];
 
   // Add knowledge tool only when knowledgeStore is provided

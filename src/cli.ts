@@ -10,14 +10,18 @@ import { AssistantController, type AssistantEvent } from "./assistant/index.js";
 
 type CliOptions = {
   dataDir?: string;
+  sessionId?: string;
+  newSession?: boolean;
 };
 
-const USAGE = `smart-assistant [--data-dir <path>]
+const USAGE = `smart-assistant [--data-dir <path>] [--session <id>] [--new]
 
 Options:
   -h, --help           Show this help message
   -v, --version        Show package version
       --data-dir <path> Override SMART_ASSISTANT_DATA_DIR
+      --session <id>   Resume specific session
+      --new            Start a new session (don't resume latest)
 
 Commands:
   /help                Show interactive commands
@@ -47,7 +51,27 @@ function parseArgs(argv: string[]): { kind: "run"; options: CliOptions } | { kin
       continue;
     }
 
+    if (arg === "--session") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("-")) {
+        return { kind: "error", message: "Missing value for --session" };
+      }
+      options.sessionId = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--new") {
+      options.newSession = true;
+      continue;
+    }
+
     return { kind: "error", message: `Unknown option: ${arg}` };
+  }
+
+  // Validate: cannot use --session and --new together
+  if (options.sessionId && options.newSession) {
+    return { kind: "error", message: "Cannot use --session and --new together" };
   }
 
   return { kind: "run", options };

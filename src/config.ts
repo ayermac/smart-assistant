@@ -3,6 +3,7 @@ export const DEFAULT_DATA_DIR = ".smart-assistant";
 export const SMART_ASSISTANT_DATA_DIR_ENV = "SMART_ASSISTANT_DATA_DIR";
 export const SMART_ASSISTANT_PROVIDER_ENV = "SMART_ASSISTANT_PROVIDER";
 export const SMART_ASSISTANT_MODEL_ENV = "SMART_ASSISTANT_MODEL";
+export const SMART_ASSISTANT_KNOWLEDGE_DIR_ENV = "SMART_ASSISTANT_KNOWLEDGE_DIR";
 
 export const DATA_SUBDIRS = {
   sessions: "sessions",
@@ -25,4 +26,17 @@ export function resolveDataPaths(env: NodeJS.ProcessEnv = process.env): Record<D
     knowledge: `${dataDir}/${DATA_SUBDIRS.knowledge}`,
     plans: `${dataDir}/${DATA_SUBDIRS.plans}`,
   };
+}
+
+/**
+ * Resolve the knowledge source directory path.
+ * Checks SMART_ASSISTANT_KNOWLEDGE_DIR env var, falling back to {dataDir}/knowledge-sources.
+ */
+export function resolveKnowledgeSourceDir(env: NodeJS.ProcessEnv = process.env): string {
+  const knowledgeDir = env[SMART_ASSISTANT_KNOWLEDGE_DIR_ENV]?.trim();
+  if (knowledgeDir) {
+    return knowledgeDir;
+  }
+  const dataDir = resolveDataDir(env);
+  return `${dataDir}/knowledge-sources`;
 }

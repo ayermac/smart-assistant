@@ -84,3 +84,4 @@
 {"t":0,"agent":"a9d6bb2","agent_type":"gsd-executor","event":"agent_stop","success":true,"duration_ms":543575}
 {"t":0,"agent":"a652b51","agent_type":"gsd-executor","event":"agent_start","parent_mode":"none"}
 {"t":0,"agent":"a652b51","agent_type":"gsd-executor","event":"agent_stop","success":true,"duration_ms":111636}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"gsd-plan-phase"}

@@ -19,6 +19,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Markdown/Text RAG** - Ingest and search local Markdown/text knowledge. (completed 2026-05-22)
 - [x] **Phase 6: Planning Tools** - Add structured task planning and plan state updates. (completed 2026-05-22)
 - [x] **Phase 7: Evaluation and Release Readiness** - Verify the documented acceptance cases and harden failure behavior. (completed 2026-05-22)
+- [ ] **Phase 8: Chroma + Doubao Embedding** - Replace synonym matching with vector-based semantic search using ChromaDB and Doubao embedding API.
+- [ ] **Phase 9: Memory Migration** - Migrate existing JSON memories to Chroma vector storage and verify retrieval quality.
 
 ## Phase Details
 
@@ -148,10 +150,41 @@ Plans:
 - [ ] 07-02: Add failure-mode checks for missing knowledge, tool errors, and session restore.
 - [ ] 07-03: Update README and `.planning` artifacts with current status and release-readiness notes.
 
+### Phase 8: Chroma + Doubao Embedding
+**Goal**: Replace synonym-based memory matching with vector-based semantic search using ChromaDB and Doubao embedding API.
+**Depends on**: Phase 7
+**Requirements**: [RAG2-01, RAG2-02, RAG2-03, RAG2-04, RAG2-05]
+**Success Criteria** (what must be TRUE):
+  1. `VectorMemoryStore` class implements `MemoryStore` interface.
+  2. Doubao embedding API integration works with configured baseUrl, model, and apiKey.
+  3. Memory storage generates embedding and stores in ChromaDB.
+  4. Memory recall uses vector similarity search to find relevant memories.
+  5. Queries like "你是谁" match memories containing "名字是小C" without hardcoded synonyms.
+**Plans**: 3 plans
+
+Plans:
+- [ ] 08-01: Install chromadb and implement Doubao embedding API client.
+- [ ] 08-02: Implement VectorMemoryStore with ChromaDB integration.
+- [ ] 08-03: Update assistant controller to use VectorMemoryStore, add environment configuration.
+
+### Phase 9: Memory Migration
+**Goal**: Migrate existing JSON-based memories to Chroma vector storage and verify retrieval quality.
+**Depends on**: Phase 8
+**Requirements**: [RAG2-06]
+**Success Criteria** (what must be TRUE):
+  1. Migration script reads existing JSON memories and imports to ChromaDB.
+  2. All existing memories are accessible via vector search.
+  3. Retrieval quality matches or exceeds v1 synonym-based matching.
+**Plans**: 2 plans
+
+Plans:
+- [ ] 09-01: Create migration script to import JSON memories to ChromaDB.
+- [ ] 09-02: Verify migration and test retrieval quality against known queries.
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -162,3 +195,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Markdown/Text RAG | 4/4 | Complete | 2026-05-22 |
 | 6. Planning Tools | 3/3 | Complete | 2026-05-22 |
 | 7. Evaluation and Release Readiness | 3/3 | Complete | 2026-05-22 |
+| 8. Chroma + Doubao Embedding | 0/3 | Pending | - |
+| 9. Memory Migration | 0/2 | Pending | - |

@@ -8,7 +8,7 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getDefaultModel } from "../model.js";
 import { createAllTools } from "../tools/index.js";
-import { FileMemoryStore } from "../memory/index.js";
+import { VectorMemoryStore, createDefaultEmbeddingConfig } from "../memory/index.js";
 import { FileKnowledgeStore } from "../knowledge/index.js";
 import { FilePlanStore } from "../planning/index.js";
 import type { SessionStore } from "../session/types.js";
@@ -68,11 +68,36 @@ export class AssistantController {
    * @param sessionId - ID of the current session
    * @throws Error if required API key is not set
    */
-  constructor(
+  private constructor(
+    initialMessages: AgentMessage[],
+    sessionStore: SessionStore,
+    sessionId: string,
+    agent: Agent
+  ) {
+    this.sessionStore = sessionStore;
+    this.sessionId = sessionId;
+    this.agent = agent;
+
+    // Subscribe to agent events once in constructor (fixes duplicate subscription bug)
+    this.agent.subscribe((event: AgentEvent) => {
+      this.handleAgentEvent(event);
+    });
+  }
+
+  /**
+   * Create and initialize an AssistantController.
+   * Use this factory method instead of constructor.
+   *
+   * @param initialMessages - Messages to restore from a previous session
+   * @param sessionStore - Session persistence store
+   * @param sessionId - ID of the current session
+   * @throws Error if required API key is not set
+   */
+  static async create(
     initialMessages: AgentMessage[],
     sessionStore: SessionStore,
     sessionId: string
-  ) {
+  ): Promise<AssistantController> {
     // Validate API key based on provider
     const provider = process.env.SMART_ASSISTANT_PROVIDER?.trim() || "anthropic";
     const apiKeyEnv = provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
@@ -81,11 +106,10 @@ export class AssistantController {
       throw new Error(`${apiKeyEnv} environment variable is required for provider "${provider}"`);
     }
 
-    this.sessionStore = sessionStore;
-    this.sessionId = sessionId;
-
-    // Create memory store
-    const memoryStore = new FileMemoryStore();
+    // Create and initialize memory store (vector-based)
+    const embeddingConfig = createDefaultEmbeddingConfig();
+    const memoryStore = new VectorMemoryStore(embeddingConfig);
+    await memoryStore.init();
 
     // Create knowledge store
     const knowledgeStore = new FileKnowledgeStore();
@@ -94,7 +118,7 @@ export class AssistantController {
     const planStore = new FilePlanStore();
 
     // Initialize agent with memory, knowledge, and planning tools
-    this.agent = new Agent({
+    const agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model: getDefaultModel(),
@@ -104,10 +128,7 @@ export class AssistantController {
       },
     });
 
-    // Subscribe to agent events once in constructor (fixes duplicate subscription bug)
-    this.agent.subscribe((event: AgentEvent) => {
-      this.handleAgentEvent(event);
-    });
+    return new AssistantController(initialMessages, sessionStore, sessionId, agent);
   }
 
   /**

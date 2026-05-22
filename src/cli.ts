@@ -150,7 +150,7 @@ async function runInteractive(options: CliOptions): Promise<void> {
   // Initialize assistant controller with session
   let controller: AssistantController;
   try {
-    controller = new AssistantController(session.messages, sessionStore, session.id);
+    controller = await AssistantController.create(session.messages, sessionStore, session.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`Error: ${message}\n`);

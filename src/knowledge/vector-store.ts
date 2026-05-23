@@ -1,8 +1,8 @@
 /**
  * Vector-based knowledge store using LanceDB and Doubao embeddings.
  *
- * Provides semantic search for knowledge chunks using vector similarity.
- * Reuses embedding infrastructure from Memory module.
+ * Provides hybrid semantic + keyword search for knowledge chunks.
+ * Uses vector similarity (LanceDB) + BM25 keyword retrieval + RRF fusion.
  */
 
 import * as lancedb from "@lancedb/lancedb";
@@ -13,6 +13,9 @@ import { join, relative } from "node:path";
 import { resolveKnowledgeSourceDir } from "../config.js";
 import { getEmbedding, createDefaultEmbeddingConfig, type EmbeddingConfig } from "../memory/embedding.js";
 import { chunkFile, isSupportedExtension } from "./chunker.js";
+import { cleanText, extractFrontmatter } from "./cleaner.js";
+import { BM25Retriever, type BM25Match } from "./bm25.js";
+import { rrfFusion, type VectorMatch, type FusedResult } from "./fusion.js";
 import type {
   KnowledgeChunk,
   KnowledgeManifest,
@@ -67,6 +70,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   private db: lancedb.Connection | null = null;
   private table: lancedb.Table | null = null;
   private manifest: KnowledgeManifest | null = null;
+  private bm25: BM25Retriever | null = null;
+  private bm25NeedsRebuild: boolean = true;
 
   constructor(config?: VectorKnowledgeStoreConfig) {
     this.embeddingConfig = config?.embeddingConfig ?? createDefaultEmbeddingConfig();
@@ -109,6 +114,54 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       throw new Error("VectorKnowledgeStore not initialized. Call init() first.");
     }
     return this.table;
+  }
+
+  /**
+   * Ensure BM25 index is built. Rebuilds if needed.
+   */
+  private async ensureBM25Index(): Promise<void> {
+    if (!this.bm25NeedsRebuild && this.bm25) {
+      return;
+    }
+
+    const table = this.ensureTable();
+
+    // Read all chunks from LanceDB
+    const results = await table.query()
+      .select(["id", "text", "sourcePath", "headingText", "headingLevel", "tags", "createdAt"])
+      .toArray();
+
+    const chunks: KnowledgeChunk[] = [];
+    for (const row of results) {
+      const record = row as {
+        id?: string;
+        text?: string;
+        sourcePath?: string;
+        headingText?: string;
+        headingLevel?: number;
+        tags?: unknown;
+        createdAt?: string;
+      };
+
+      if (record.id && record.text) {
+        chunks.push({
+          id: record.id,
+          sourcePath: record.sourcePath ?? "",
+          headingText: record.headingText ?? "",
+          headingLevel: record.headingLevel ?? 0,
+          text: record.text,
+          startLine: 0,
+          endLine: 0,
+          tags: arrowToStringArray(record.tags),
+          createdAt: record.createdAt ?? new Date().toISOString(),
+        });
+      }
+    }
+
+    // Build BM25 index
+    this.bm25 = new BM25Retriever();
+    this.bm25.index(chunks);
+    this.bm25NeedsRebuild = false;
   }
 
   /**
@@ -166,7 +219,15 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     for (const sourceFile of sourceFiles) {
       try {
         const content = await readFile(sourceFile.absolutePath, "utf8");
-        const chunks = chunkFile(sourceFile.path, content);
+
+        // Apply text cleaning before chunking
+        const cleaned = cleanText(content);
+
+        // Extract frontmatter if present (for metadata enrichment)
+        const { body } = extractFrontmatter(cleaned);
+
+        // Chunk with three-layer strategy and overlap
+        const chunks = chunkFile(sourceFile.path, body, { maxChunkSize: 800, overlap: 80 });
 
         // Generate embeddings and store in LanceDB
         for (const chunk of chunks) {
@@ -222,11 +283,15 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     };
 
     this.manifest = manifest;
+
+    // Mark BM25 index for rebuild
+    this.bm25NeedsRebuild = true;
+
     return manifest;
   }
 
   /**
-   * Search knowledge chunks using vector similarity.
+   * Search knowledge chunks using hybrid retrieval (vector + BM25 + RRF fusion).
    */
   async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
     const table = this.ensureTable();
@@ -241,27 +306,26 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       return [];
     }
 
+    const limit = options?.limit ?? 5;
+
     // Generate embedding for query
     const queryVector = await getEmbedding(query, this.embeddingConfig);
 
-    // Build vector search query
-    const limit = options?.limit ?? 5;
-    let searchQuery = table.vectorSearch(queryVector).limit(limit);
+    // Vector search (top 20)
+    let vectorSearchQuery = table.vectorSearch(queryVector).limit(20);
 
     // Add sourcePath filter if provided
     if (options?.sourcePath) {
-      searchQuery = searchQuery.where(`sourcePath LIKE '%${options.sourcePath}%'`) as typeof searchQuery;
+      vectorSearchQuery = vectorSearchQuery.where(`sourcePath LIKE '%${options.sourcePath}%'`) as typeof vectorSearchQuery;
     }
 
-    // Execute search
-    const results = await searchQuery
+    const vectorResults = await vectorSearchQuery
       .select(["id", "text", "sourcePath", "headingText", "headingLevel", "tags", "createdAt", "_distance"])
       .toArray();
 
-    // Map results to KnowledgeMatch[]
-    const matches: KnowledgeMatch[] = [];
-
-    for (const row of results) {
+    // Convert vector results to VectorMatch[]
+    const vectorMatches: VectorMatch[] = [];
+    for (const row of vectorResults) {
       const record = row as {
         id?: string;
         text?: string;
@@ -283,28 +347,61 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           }
         }
 
-        // Convert distance to relevance score
         const distance = record._distance ?? 0;
         const relevanceScore = Math.max(0, 1 / (1 + distance));
 
-        const chunk: KnowledgeChunk = {
-          id: record.id,
-          sourcePath: record.sourcePath ?? "",
-          headingText: record.headingText ?? "",
-          headingLevel: record.headingLevel ?? 0,
+        vectorMatches.push({
+          chunkId: record.id,
           text: record.text,
-          startLine: 0,
-          endLine: 0,
-          tags: arrowToStringArray(record.tags),
-          createdAt: record.createdAt ?? new Date().toISOString(),
-        };
-
-        matches.push({
-          chunk,
-          relevanceScore,
-          matchReason: "vector similarity",
+          score: relevanceScore,
         });
       }
+    }
+
+    // BM25 search (top 20)
+    await this.ensureBM25Index();
+    const bm25Results: BM25Match[] = this.bm25!.search(query, 20);
+
+    // RRF fusion
+    const fused = rrfFusion(vectorMatches, bm25Results, { topN: limit });
+
+    // Map fused results to KnowledgeMatch[]
+    // We need to re-fetch full chunk data for the fused results
+    const matches: KnowledgeMatch[] = [];
+
+    for (const fusedResult of fused) {
+      // Find full chunk data from vector results first
+      const vectorRecord = vectorResults.find((row) => {
+        const r = row as { id?: string };
+        return r.id === fusedResult.chunkId;
+      }) as {
+        id?: string;
+        text?: string;
+        sourcePath?: string;
+        headingText?: string;
+        headingLevel?: number;
+        tags?: unknown;
+        createdAt?: string;
+        _distance?: number;
+      } | undefined;
+
+      const chunk: KnowledgeChunk = {
+        id: fusedResult.chunkId,
+        sourcePath: vectorRecord?.sourcePath ?? "",
+        headingText: vectorRecord?.headingText ?? "",
+        headingLevel: vectorRecord?.headingLevel ?? 0,
+        text: fusedResult.text,
+        startLine: 0,
+        endLine: 0,
+        tags: vectorRecord ? arrowToStringArray(vectorRecord.tags) : [],
+        createdAt: vectorRecord?.createdAt ?? new Date().toISOString(),
+      };
+
+      matches.push({
+        chunk,
+        relevanceScore: fusedResult.rrfScore,
+        matchReason: "hybrid (vector + BM25)",
+      });
     }
 
     return matches;

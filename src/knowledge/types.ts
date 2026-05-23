@@ -74,6 +74,9 @@ export interface KnowledgeManifest {
  * Interface for knowledge persistence and retrieval operations.
  */
 export interface KnowledgeStore {
+  /** Initialize the store (optional, for async resource setup). */
+  init?(): Promise<void>;
+
   /** Ingest files from the knowledge source directory. */
   ingest(): Promise<KnowledgeManifest>;
 

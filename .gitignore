@@ -4,5 +4,8 @@ dist/
 .smart-assistant/
 *.log
 
+# Knowledge sources (user's local knowledge base)
+knowledge-sources/
+
 # oh-my-claudecode runtime state
 .omc/

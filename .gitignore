@@ -3,3 +3,6 @@ dist/
 .env
 .smart-assistant/
 *.log
+
+# oh-my-claudecode runtime state
+.omc/

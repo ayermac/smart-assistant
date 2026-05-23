@@ -81,6 +81,7 @@ smart-assistant --help
 | `EMBEDDING_BASE_URL` | Embedding API URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_MODEL` | Embedding model | `doubao-embedding-vision` |
 | `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
+| `SMART_ASSISTANT_KNOWLEDGE_DIR` | Knowledge source directory | `.smart-assistant/knowledge-sources` |
 
 <details>
 <summary>📝 Example .env</summary>
@@ -103,6 +104,30 @@ SMART_ASSISTANT_DATA_DIR=.smart-assistant
 ```
 
 </details>
+
+### Knowledge RAG Setup
+
+Put your Markdown or text files in the knowledge source directory:
+
+```bash
+# Default location
+mkdir -p .smart-assistant/knowledge-sources
+
+# Add your documents
+cp ~/notes/*.md .smart-assistant/knowledge-sources/
+
+# Or set a custom directory
+export SMART_ASSISTANT_KNOWLEDGE_DIR=/path/to/your/docs
+```
+
+Then ask questions about your documents:
+```
+you> 搜索一下关于API设计的笔记
+assistant> [Tool: search_knowledge] done
+According to `api-design.md > RESTful原则`，你的笔记中提到...
+```
+
+Supported file types: `.md`, `.txt`, `.markdown`
 
 ---
 

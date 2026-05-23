@@ -1,75 +1,146 @@
 # smart-assistant
 
-本项目是一个本地优先、CLI 优先的个人知识助手 agent。
+> A local-first, CLI-first personal AI assistant with long-term memory and RAG capabilities.
 
-它的目标不是做一个泛聊天机器人，而是做一个能记住你的偏好、能查本地知识、能拆解任务、能稳定调用工具的助手。
+[![npm version](https://img.shields.io/npm/v/smart-assistant?color=blue)](https://www.npmjs.com/package/smart-assistant)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-brightgreen)](package.json)
 
-## 定位
+**Quick Start** · **Features** · **Configuration** · **Tech Stack**
 
-- 技术底座：TypeScript + `pi-ai` + `pi-agent-core`
-- 入口形态：CLI 优先，后续可扩展 Web/API
-- 数据边界：默认本地保存，知识和记忆先只做本地文本/Markdown
+---
 
-## 当前状态
+## ✨ Features
 
-项目已经初始化为 GSD 项目，规划入口集中在 `.planning`：
+| Feature | Description |
+|---------|-------------|
+| 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings |
+| 📚 **Knowledge RAG** | Search local Markdown/text files for context |
+| 📋 **Task Planning** | Break down complex tasks into trackable steps |
+| 💬 **Session Persistence** | Resume conversations across sessions |
+| 🔒 **Local-First** | All data stored locally, no cloud required |
+| ⚡ **Streaming CLI** | Real-time responses with tool call visualization |
 
-- [.planning/PROJECT.md](.planning/PROJECT.md)：项目定义、核心价值、约束和关键决策
-- [.planning/REQUIREMENTS.md](.planning/REQUIREMENTS.md)：v1 需求、范围边界和 phase 映射
-- [.planning/ROADMAP.md](.planning/ROADMAP.md)：阶段路线图和可交付结果
-- [.planning/STATE.md](.planning/STATE.md)：当前进度和会话延续状态
-- [.planning/research/SUMMARY.md](.planning/research/SUMMARY.md)：架构、工具、行为规范和评测用例摘要
+---
 
-当前 Phase 2 已连接 `pi-agent-core` 和 `pi-ai` 的 agent runtime，支持流式输出和工具调用；下一步是进入 Phase 3，实现会话持久化和恢复。
-
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
+# Clone and install
+git clone https://github.com/your-username/smart-assistant.git
+cd smart-assistant
 npm install
-# Set your Anthropic API key
-export ANTHROPIC_API_KEY=sk-ant-...
-# Or create a .env file with ANTHROPIC_API_KEY=sk-ant-...
+
+# Set your API key
+export OPENAI_API_KEY=your-api-key
+# Or create .env file with OPENAI_API_KEY=your-api-key
+
+# Run
 npm run dev
-npm run typecheck
-npm run build
-node dist/cli.js --help
 ```
 
-**Required**: `ANTHROPIC_API_KEY` environment variable must be set to use the assistant.
+**First conversation:**
+```
+you> 记住我的名字是小C
+assistant> 好的，我已经记住啦，你的名字是小C。
 
-## Local Data
+you> 我叫什么名字
+assistant> 根据我存储的记忆，你的名字是小C。
+```
 
-默认数据目录是 `.smart-assistant`，可以通过 `SMART_ASSISTANT_DATA_DIR` 覆盖。
+<details>
+<summary>📦 Installation Options</summary>
 
-Phase 1 约定的子目录：
+```bash
+# Development mode (with hot reload)
+npm run dev
 
-- `sessions`
-- `memory`
-- `knowledge`
-- `plans`
+# Production build
+npm run build
+node dist/cli.js
 
-`.env.example` 会列出 Phase 1 的环境变量占位。
+# Global install
+npm link
+smart-assistant --help
+```
 
-## Phase 2 Status
+</details>
 
-Phase 2 已连接 `pi-agent-core` 和 `pi-ai` 的 agent runtime：
+---
 
-- CLI 使用 `pi-agent-core` 和 `pi-ai` 连接到 assistant runtime
-- 支持 `ANTHROPIC_API_KEY` 环境变量进行模型调用认证
-- 流式输出实时显示在 CLI 中
-- `get_time` 工具可用于获取当前时间
-- 工具调用状态清晰显示（带颜色标识）
-- SIGINT (Ctrl+C) 可优雅中止当前操作
-- 错误处理稳健，不会导致 CLI 崩溃
+## ⚙️ Configuration
 
-- `--help` 显示用法
-- `--version` 显示版本
-- `--data-dir` 覆盖本地数据目录
-- 普通输入会发送到 agent runtime 并流式返回响应
+### Environment Variables
 
-## Evaluation
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SMART_ASSISTANT_PROVIDER` | LLM provider (`openai` or `anthropic`) | `openai` |
+| `SMART_ASSISTANT_MODEL` | Model ID | `doubao-seed-2.0-lite` |
+| `OPENAI_API_KEY` | API key for OpenAI/Doubao | *required* |
+| `OPENAI_BASE_URL` | API base URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
+| `EMBEDDING_BASE_URL` | Embedding API URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
+| `EMBEDDING_MODEL` | Embedding model | `doubao-embedding-vision` |
+| `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
 
-Smart Assistant v1 includes an automated evaluation suite covering 10 acceptance cases:
+<details>
+<summary>📝 Example .env</summary>
+
+```bash
+# LLM Provider
+SMART_ASSISTANT_PROVIDER=openai
+SMART_ASSISTANT_MODEL=doubao-seed-2.0-lite
+
+# API Configuration
+OPENAI_API_KEY=your-api-key
+OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+
+# Embedding (uses same API key)
+EMBEDDING_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+EMBEDDING_MODEL=doubao-embedding-vision
+
+# Data directory
+SMART_ASSISTANT_DATA_DIR=.smart-assistant
+```
+
+</details>
+
+---
+
+## 🏗️ Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Runtime | Node.js 22+ / TypeScript |
+| Agent Core | `pi-agent-core` + `pi-ai` |
+| Vector DB | LanceDB (embedded, no server) |
+| Embeddings | Doubao embedding (2048-dim) |
+| File Format | Apache Arrow |
+
+### Project Structure
+
+```
+smart-assistant/
+├── src/
+│   ├── cli.ts              # CLI entry point
+│   ├── assistant/          # Agent controller
+│   ├── memory/             # Long-term memory (LanceDB)
+│   ├── knowledge/          # RAG file search
+│   ├── planning/           # Task planning tools
+│   ├── session/            # Session persistence
+│   └── tools/              # Tool implementations
+├── .smart-assistant/       # Local data (gitignored)
+│   ├── sessions/           # Conversation history
+│   ├── vectors/            # LanceDB memory store
+│   ├── knowledge/          # Knowledge index
+│   └── plans/              # Task plans
+└── .planning/              # Project planning docs
+```
+
+---
+
+## 📊 Evaluation
+
+v1.0.0 passes all 10 acceptance criteria:
 
 | Case | Description | Status |
 |------|-------------|--------|
@@ -84,33 +155,41 @@ Smart Assistant v1 includes an automated evaluation suite covering 10 acceptance
 | 9 | Long context | ✅ |
 | 10 | Session restore | ✅ |
 
-**Pass Rate: 10/10 (100%)** - All acceptance criteria met.
-
-Run evaluation: `npm run eval`
-
-## Development
-
 ```bash
-# Run evaluation suite
-npm run eval
-
-# View evaluation report
-cat .planning/evaluation-report.md
-
-# View detailed evaluation summary
-cat .planning/evaluation-summary.md
+npm run eval  # Run evaluation suite
 ```
 
-## Known Limitations
+---
 
-- RAG is limited to Markdown and text files (PDF, docx, web crawling excluded)
-- No cloud sync - all data is local-first
+## 🔧 Development
+
+```bash
+npm run dev        # Development mode
+npm run build      # Production build
+npm run typecheck  # Type checking
+npm run eval       # Run evaluations
+```
+
+---
+
+## ⚠️ Known Limitations
+
+- RAG supports Markdown and text files only (no PDF, docx, web crawling)
+- No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)
 - CLI-only interface (Web UI/API planned for v2)
 
-## 设计原则
+---
 
-- 先做单 agent，再考虑多 agent
-- 先做本地文本/Markdown，再扩展更复杂的数据源
-- 先把 memory、RAG、planning 分开，再决定怎么组合
-- 先保证可评测，再扩展能力
+## 📄 License
+
+MIT © 2024
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [pi-agent-core](https://github.com/earendil-works/pi-agent-core) - Agent runtime
+- [LanceDB](https://lancedb.com/) - Embedded vector database
+- [Apache Arrow](https://arrow.apache.org/) - Columnar data format

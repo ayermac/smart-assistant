@@ -45,7 +45,7 @@ export async function getEmbedding(
   config: EmbeddingConfig
 ): Promise<number[]> {
   if (!config.apiKey) {
-    throw new Error("Embedding API key not configured. Set ANTHROPIC_API_KEY environment variable.");
+    throw new Error("Embedding API key not configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.");
   }
 
   const response = await fetch(`${config.baseUrl}/embeddings`, {

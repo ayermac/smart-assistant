@@ -1,56 +1,52 @@
-# Phase 8: Chroma + Doubao Embedding - Context
+# Phase 8: Knowledge RAG Vector Search - Context
 
-**Gathered:** 2026-05-22
+**Gathered:** 2026-05-23
 **Status:** Ready for planning
-**Source:** PRD Express Path (.planning/research/v2-chroma-embeddings.md)
+**Source:** Analysis of current implementation
 
 <domain>
 ## Phase Boundary
 
-Replace v1's hardcoded synonym-based memory matching with vector-based semantic search using:
-- **ChromaDB** as vector database
-- **Doubao Embedding API** for generating embeddings
+Add vector-based semantic search to Knowledge RAG, reusing existing LanceDB + Doubao embedding infrastructure from Memory module.
 
-This enables true semantic retrieval without manual synonym maintenance.
+Current state:
+- Memory: ✅ Uses LanceDB + Doubao embedding (2048-dim vectors)
+- Knowledge: ❌ Uses keyword matching (`calculateRelevanceScore`)
+
+This phase upgrades Knowledge RAG to use the same semantic search approach as Memory.
 
 </domain>
 
 <decisions>
 ## Implementation Decisions
 
-### Embedding Provider Configuration
-- **Base URL:** `https://ark.cn-beijing.volces.com/api/coding/v3`
-- **Model:** `doubao-embedding-vision`
-- **API Key:** Uses existing `ANTHROPIC_API_KEY` environment variable (shared with assistant)
-- **Reasoning:** User-specified provider, API key sharing reduces configuration complexity
+### Reuse Existing Infrastructure
+- **Embedding:** Reuse `src/memory/embedding.ts` (`getEmbedding`, `createDefaultEmbeddingConfig`)
+- **Vector DB:** Add new LanceDB table `knowledge` in same database
+- **Dimensions:** 2048 (same as Memory, using Doubao embedding)
+- **Reasoning:** Consistent architecture, reduced complexity, proven working code
 
-### Vector Database Configuration
-- **Database:** ChromaDB (npm package `chromadb`)
-- **Storage Path:** `.smart-assistant/chroma/`
-- **Collection Name:** `memories`
-- **Reasoning:** Local-first, no external DB dependency
+### Knowledge Vector Store Design
+- **Table Name:** `knowledge` (separate from `memories` table)
+- **Schema:** id, vector, text, sourcePath, headingText, headingLevel, tags, createdAt
+- **Storage Path:** `.smart-assistant/vectors/` (shared with Memory)
+- **Reasoning:** Same database, separate tables for clear separation
 
-### Embedding Flow
-- **Store:** Text → Doubao API → Embedding → ChromaDB
-- **Recall:** Query → Doubao API → Query Embedding → Vector Search → Results
-- **Reasoning:** Standard embedding workflow, no caching in v2
+### Search Flow
+- **Ingest:** File → Chunks → Embeddings → LanceDB `knowledge` table
+- **Search:** Query → Embedding → Vector Search → Results with metadata
+- **Fallback:** If vector search fails, fall back to keyword matching
+- **Reasoning:** Graceful degradation, maintains reliability
 
-### API Integration
-- **Endpoint:** `${baseUrl}/embeddings` (POST)
-- **Request Body:** `{ model, input }`
-- **Response:** `{ data: [{ embedding: number[] }] }`
-- **Reasoning:** OpenAI-compatible API format
-
-### Fallback Strategy
-- If embedding API fails: log error, return empty results (graceful degradation)
-- If ChromaDB fails: log error, could fallback to FileMemoryStore (v2 stretch goal)
-- **Reasoning:** Fail gracefully, don't crash the assistant
+### Hybrid Scoring (Optional Enhancement)
+- Combine vector similarity score with keyword match score
+- Weight: 0.7 vector + 0.3 keyword (tunable)
+- **Reasoning:** Best of both worlds - semantic understanding + exact matches
 
 ### Claude's Discretion
-- Exact error handling strategy
-- Retry logic for API failures
-- Embedding dimension validation approach
-- ChromaDB client initialization details
+- Exact hybrid scoring formula
+- Chunk re-embedding strategy (when to update)
+- Error handling details
 
 </decisions>
 
@@ -59,70 +55,71 @@ This enables true semantic retrieval without manual synonym maintenance.
 
 **Downstream agents MUST read these before planning or implementing.**
 
-### PRD / Requirements
-- `.planning/research/v2-chroma-embeddings.md` — Full PRD with requirements and architecture
-- `.planning/REQUIREMENTS.md` — v2 requirements (RAG2-01 to RAG2-06)
+### Existing Vector Infrastructure
+- `src/memory/vector-store.ts` — LanceDB integration to reference
+- `src/memory/embedding.ts` — Doubao embedding client to reuse
+- `src/memory/types.ts` — MemoryStore interface pattern
 
-### Existing Implementation
-- `src/memory/store.ts` — Current FileMemoryStore implementation to replace
-- `src/memory/types.ts` — MemoryStore interface to implement
-- `src/assistant/controller.ts` — Where memory store is initialized
+### Knowledge Module to Modify
+- `src/knowledge/store.ts` — Current FileKnowledgeStore to extend
+- `src/knowledge/types.ts` — Types to extend with vector fields
+- `src/knowledge/index.ts` — Module exports
 
-### External Documentation
-- ChromaDB docs: https://cookbook.chromadb.dev/
-- Doubao API docs: (user-provided endpoint)
+### Configuration
+- `src/config.ts` — Data paths and environment config
 
 </canonical_refs>
 
 <specifics>
 ## Specific Ideas
 
-### Environment Variables
-```env
-# Existing (shared)
-ANTHROPIC_API_KEY=...
-
-# New (optional, defaults provided)
-EMBEDDING_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
-EMBEDDING_MODEL=doubao-embedding-vision
-```
-
-### API Request Format
+### New VectorKnowledgeStore Class
 ```typescript
-// POST ${baseUrl}/embeddings
-{
-  "model": "doubao-embedding-vision",
-  "input": "text to embed"
-}
+export class VectorKnowledgeStore implements KnowledgeStore {
+  private readonly embeddingConfig: EmbeddingConfig;
+  private readonly dbPath: string;
+  private db: lancedb.Connection | null = null;
+  private table: lancedb.Table | null = null;
 
-// Response
-{
-  "data": [
-    { "embedding": [0.1, 0.2, ...] }  // number[]
-  ]
+  // Implements same interface as FileKnowledgeStore
+  // but uses vector search instead of keyword matching
 }
 ```
 
-### ChromaDB Usage
+### LanceDB Schema for Knowledge
 ```typescript
-import { ChromaClient } from 'chromadb';
+const schema = new Schema([
+  new Field("id", new Utf8(), false),
+  new Field("vector", new FixedSizeList(2048, new Field("item", new Float32()))),
+  new Field("text", new Utf8(), false),
+  new Field("sourcePath", new Utf8(), false),
+  new Field("headingText", new Utf8(), false),
+  new Field("headingLevel", new Int32(), false),
+  new Field("tags", new List(new Field("item", new Utf8()))),
+  new Field("createdAt", new Utf8(), false),
+]);
+```
 
-const client = new ChromaClient();
-const collection = await client.createCollection({ name: 'memories' });
+### Search Implementation
+```typescript
+async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
+  // 1. Generate query embedding
+  const queryVector = await getEmbedding(query, this.embeddingConfig);
 
-// Add with embedding
-await collection.add({
-  ids: ['id'],
-  embeddings: [[0.1, 0.2, ...]],
-  documents: ['text'],
-  metadatas: [{ tags: [] }]
-});
+  // 2. Vector search
+  let searchQuery = this.table
+    .vectorSearch(queryVector)
+    .limit(options?.limit ?? 5);
 
-// Query
-const results = await collection.query({
-  queryEmbeddings: [[0.1, 0.2, ...]],
-  nResults: 5
-});
+  // 3. Add filters
+  if (options?.sourcePath) {
+    searchQuery = searchQuery.where(`sourcePath LIKE '%${options.sourcePath}%'`);
+  }
+
+  // 4. Execute and return results
+  const results = await searchQuery.toArray();
+  return this.toKnowledgeMatches(results);
+}
 ```
 
 </specifics>
@@ -130,14 +127,14 @@ const results = await collection.query({
 <deferred>
 ## Deferred Ideas
 
-- **Batch embedding:** Reduce API calls by batching multiple texts (v3)
-- **Embedding cache:** Avoid re-embedding identical texts (v3)
-- **Fallback to FileMemoryStore:** If ChromaDB unavailable (v2 stretch)
-- **Multi-language model selection:** Auto-select based on content (v3)
+- **Hybrid scoring:** Combine vector + keyword scores (v3)
+- **Embedding cache:** Avoid re-embedding identical chunks (v3)
+- **Incremental reindex:** Only embed changed chunks (v3)
+- **Multi-language:** Auto-select embedding model by content (v3)
 
 </deferred>
 
 ---
 
-*Phase: 08-chroma-doubao-embedding*
-*Context gathered: 2026-05-22 via PRD Express Path*
+*Phase: 08-knowledge-rag-vector-search*
+*Context gathered: 2026-05-23*

@@ -9,7 +9,7 @@ import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-ag
 import { getDefaultModel } from "../model.js";
 import { createAllTools } from "../tools/index.js";
 import { VectorMemoryStore, createDefaultEmbeddingConfig } from "../memory/index.js";
-import { FileKnowledgeStore } from "../knowledge/index.js";
+import { VectorKnowledgeStore } from "../knowledge/index.js";
 import { FilePlanStore } from "../planning/index.js";
 import type { SessionStore } from "../session/types.js";
 import type { AssistantEvent } from "./types.js";
@@ -111,8 +111,9 @@ export class AssistantController {
     const memoryStore = new VectorMemoryStore(embeddingConfig);
     await memoryStore.init();
 
-    // Create knowledge store
-    const knowledgeStore = new FileKnowledgeStore();
+    // Create and initialize knowledge store (vector-based)
+    const knowledgeStore = new VectorKnowledgeStore({ embeddingConfig });
+    await knowledgeStore.init();
 
     // Create plan store
     const planStore = new FilePlanStore();

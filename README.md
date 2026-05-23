@@ -13,7 +13,7 @@
 | Feature | Description |
 |---------|-------------|
 | 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings |
-| 📚 **Knowledge RAG** | Semantic search over local Markdown/text files |
+| 📚 **Knowledge RAG** | Hybrid retrieval: vector + BM25 + RRF fusion |
 | 📋 **Task Planning** | Break down complex tasks into trackable steps |
 | 💬 **Session Persistence** | Resume conversations across sessions |
 | 🔒 **Local-First** | All data stored locally, no cloud required |
@@ -89,8 +89,14 @@ assistant> 根据我存储的记忆，你的名字是小C。
 Put your Markdown or text files in the knowledge directory:
 
 ```bash
-mkdir -p .smart-assistant/knowledge-sources
-cp ~/notes/*.md .smart-assistant/knowledge-sources/
+mkdir -p knowledge-sources
+cp ~/notes/*.md knowledge-sources/
+```
+
+### Build Index
+
+```bash
+npx tsx scripts/index-knowledge.ts
 ```
 
 ### Usage
@@ -102,13 +108,27 @@ you> 搜索一下关于API设计的笔记
 assistant> According to `api-design.md > RESTful原则`，你的笔记中提到...
 ```
 
-### Semantic Search
+### Hybrid Retrieval (v2.1)
 
-Knowledge RAG uses vector embeddings for semantic search:
+Knowledge RAG uses **hybrid retrieval** for best results:
 
-- **Cross-language matching**: "身份认证" matches "authentication"
-- **Semantic understanding**: "性能优化" matches "performance tuning"
-- **No exact keywords required**: Vector similarity finds related concepts
+| Method | Strength | Example |
+|--------|----------|---------|
+| **Vector Search** | Semantic understanding | "身份认证" → "authentication" |
+| **BM25** | Exact keyword matching | "LLMRouter" → exact matches |
+| **RRF Fusion** | Combines both methods | Chunks in both lists rank higher |
+
+**Search Pipeline:**
+```
+query → vector search (top 20) + BM25 search (top 20) → RRF fusion → top N
+```
+
+### Text Processing
+
+- **HTML Cleaning**: Removes `<details>`, `<summary>`, `<br>` tags
+- **Three-Layer Chunking**: Heading → Paragraph → Hard break
+- **Overlap**: 80-char overlap between adjacent chunks for context continuity
+- **Max Chunk Size**: 800 characters (configurable)
 
 Supported file types: `.md`, `.txt`, `.markdown`
 
@@ -157,7 +177,7 @@ smart-assistant/
 
 ## 📊 Evaluation
 
-v2.0 passes all acceptance criteria:
+v2.1 passes all acceptance criteria:
 
 | Case | Description | Status |
 |------|-------------|--------|

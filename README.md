@@ -14,8 +14,8 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings |
-| 📚 **Knowledge RAG** | Search local Markdown/text files for context |
+| 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings (2048-dim) |
+| 📚 **Knowledge RAG** | Keyword-based search over local Markdown/text files |
 | 📋 **Task Planning** | Break down complex tasks into trackable steps |
 | 💬 **Session Persistence** | Resume conversations across sessions |
 | 🔒 **Local-First** | All data stored locally, no cloud required |
@@ -199,6 +199,7 @@ npm run eval       # Run evaluations
 
 ## ⚠️ Known Limitations
 
+- Knowledge RAG uses keyword matching (semantic search planned for v2)
 - RAG supports Markdown and text files only (no PDF, docx, web crawling)
 - No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)

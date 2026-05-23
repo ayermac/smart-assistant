@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Planning Tools** - Add structured task planning and plan state updates. (completed 2026-05-22)
 - [x] **Phase 7: Evaluation and Release Readiness** - Verify the documented acceptance cases and harden failure behavior. (completed 2026-05-22)
 - [x] **Phase 8: Knowledge RAG Vector Search** - Add semantic vector search to Knowledge RAG using LanceDB and Doubao embedding (reusing Memory infrastructure).
-- [ ] **Phase 9: RAG Pipeline Upgrade** - Upgrade RAG to production-grade hybrid retrieval: text cleaning, three-layer chunking, BM25, RRF fusion.
+- [x] **Phase 9: RAG Pipeline Upgrade** - Upgrade RAG to production-grade hybrid retrieval: text cleaning, three-layer chunking, BM25, RRF fusion. (completed 2026-05-23)
 
 ## Phase Details
 
@@ -179,8 +179,8 @@ Plans:
 **Plans**: See 09-PLAN.md
 
 Plans:
-- [ ] 09-01: Implement cleaner, chunker upgrade, BM25, and fusion modules.
-- [ ] 09-02: Wire hybrid search into VectorKnowledgeStore.search().
+- [x] 09-01: Implement cleaner, chunker upgrade, BM25, and fusion modules.
+- [x] 09-02: Wire hybrid search into VectorKnowledgeStore.search().
 
 ## Progress
 
@@ -197,4 +197,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Planning Tools | 3/3 | Complete | 2026-05-22 |
 | 7. Evaluation and Release Readiness | 3/3 | Complete | 2026-05-22 |
 | 8. Knowledge RAG Vector Search | 2/2 | Complete | 2026-05-23 |
-| 9. RAG Pipeline Upgrade | 0/2 | Pending | - |
+| 9. RAG Pipeline Upgrade | 2/2 | Complete | 2026-05-23 |

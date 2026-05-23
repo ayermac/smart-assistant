@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: knowledge-vector-search
+milestone: v2.1
+milestone_name: rag-pipeline-upgrade
 status: completed
-stopped_at: Phase 8 completed
-last_updated: "2026-05-23T04:00:00.000Z"
-last_activity: 2026-05-23 -- Phase 8 completed (Knowledge RAG Vector Search)
+stopped_at: Phase 9 completed
+last_updated: "2026-05-23T20:30:00.000Z"
+last_activity: 2026-05-23 -- Phase 9 completed (RAG Pipeline Upgrade)
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 22
-  completed_plans: 22
+  total_phases: 9
+  completed_phases: 9
+  total_plans: 24
+  completed_plans: 24
   percent: 100
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** 用户可以在 CLI 里用一个稳定入口，让助手记住明确的长期信息、检索本地知识，并把任务拆解成可执行步骤。
-**Current focus:** All phases complete - v2.0 ready
+**Current focus:** All phases complete - v2.1 ready
 
 ## Current Position
 
-Phase: 8 of 8 (knowledge-rag-vector-search) COMPLETED
+Phase: 9 of 9 (rag-pipeline-upgrade) COMPLETED
 Status: All 2 plans completed
-Last activity: 2026-05-23 -- Phase 8 completed
+Last activity: 2026-05-23 -- Phase 9 completed
 
-Progress: [██████████] 100% for Phase 1, [██████████] 100% for Phase 2, [██████████] 100% for Phase 3, [██████████] 100% for Phase 4, [██████████] 100% for Phase 5, [██████████] 100% for Phase 6, [██████████] 100% for Phase 7, [██████████] 100% for Phase 8 (2/2 plans)
+Progress: [██████████] 100% for Phase 1, [██████████] 100% for Phase 2, [██████████] 100% for Phase 3, [██████████] 100% for Phase 4, [██████████] 100% for Phase 5, [██████████] 100% for Phase 6, [██████████] 100% for Phase 7, [██████████] 100% for Phase 8 (2/2 plans), [██████████] 100% for Phase 9 (2/2 plans)
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [██████████] 100% for Phase 1, [██████
 | 6 | 3/3 | ~15 min | ~5 min |
 | 7 | 3/3 | ~30 min | ~15 min |
 | 8 | 2/2 | ~10 min | ~5 min |
+| 9 | 2/2 | ~10 min | ~5 min |
 
 **Recent Trend:**
 
@@ -74,6 +75,7 @@ Recent decisions affecting current work:
 - Phase 6 execution: Planning uses single plan mode, JSON file storage, three step statuses.
 - Phase 7 execution: Evaluation harness with 10 acceptance cases, 8/10 pass threshold, mock_failure tool for error testing.
 - Phase 8 execution: Knowledge RAG uses LanceDB vector search with Doubao embeddings (2048-dim vectors).
+- Phase 9 execution: RAG upgraded to hybrid retrieval (vector + BM25 → RRF fusion). Text cleaning removes HTML. Three-layer chunking with overlap (800/80).
 
 ### Pending Todos
 

@@ -15,7 +15,7 @@
 | Feature | Description |
 |---------|-------------|
 | 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings (2048-dim) |
-| 📚 **Knowledge RAG** | Keyword-based search over local Markdown/text files |
+| 📚 **Knowledge RAG** | Semantic vector search over local Markdown/text files |
 | 📋 **Task Planning** | Break down complex tasks into trackable steps |
 | 💬 **Session Persistence** | Resume conversations across sessions |
 | 🔒 **Local-First** | All data stored locally, no cloud required |
@@ -127,6 +127,11 @@ assistant> [Tool: search_knowledge] done
 According to `api-design.md > RESTful原则`，你的笔记中提到...
 ```
 
+**Semantic Search:** Knowledge RAG uses vector embeddings for semantic search. This means:
+- Cross-language matching: "身份认证" can match "authentication"
+- Semantic understanding: "性能优化" matches "performance tuning"
+- No exact keyword overlap required
+
 Supported file types: `.md`, `.txt`, `.markdown`
 
 ---
@@ -155,8 +160,7 @@ smart-assistant/
 │   └── tools/              # Tool implementations
 ├── .smart-assistant/       # Local data (gitignored)
 │   ├── sessions/           # Conversation history
-│   ├── vectors/            # LanceDB memory store
-│   ├── knowledge/          # Knowledge index
+│   ├── vectors/            # LanceDB vector store (memory + knowledge)
 │   └── plans/              # Task plans
 └── .planning/              # Project planning docs
 ```
@@ -199,11 +203,11 @@ npm run eval       # Run evaluations
 
 ## ⚠️ Known Limitations
 
-- Knowledge RAG uses keyword matching (semantic search planned for v2)
 - RAG supports Markdown and text files only (no PDF, docx, web crawling)
 - No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)
-- CLI-only interface (Web UI/API planned for v2)
+- CLI-only interface (Web UI/API planned for v3)
+- Vector search requires embedding API calls (consider caching for high-volume queries)
 
 ---
 

@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Planning Tools** - Add structured task planning and plan state updates. (completed 2026-05-22)
 - [x] **Phase 7: Evaluation and Release Readiness** - Verify the documented acceptance cases and harden failure behavior. (completed 2026-05-22)
 - [x] **Phase 8: Knowledge RAG Vector Search** - Add semantic vector search to Knowledge RAG using LanceDB and Doubao embedding (reusing Memory infrastructure).
+- [ ] **Phase 9: RAG Pipeline Upgrade** - Upgrade RAG to production-grade hybrid retrieval: text cleaning, three-layer chunking, BM25, RRF fusion.
 
 ## Phase Details
 
@@ -165,6 +166,22 @@ Plans:
 - [x] 08-01: Implement VectorKnowledgeStore with LanceDB integration.
 - [x] 08-02: Wire VectorKnowledgeStore into assistant controller.
 
+### Phase 9: RAG Pipeline Upgrade
+**Goal**: Upgrade RAG from pure vector retrieval to production-grade hybrid retrieval with text cleaning, three-layer chunking, BM25 keyword search, and RRF fusion.
+**Depends on**: Phase 8
+**Requirements**: [RAG3-01, RAG3-02, RAG3-03, RAG3-04, RAG3-05]
+**Success Criteria** (what must be TRUE):
+  1. `cleanText()` removes HTML tags, compresses blank lines, extracts frontmatter.
+  2. `chunkFile()` implements three-layer chunking (heading → paragraph → hard break) with overlap.
+  3. `BM25Retriever` provides keyword search complementing vector retrieval.
+  4. `rrfFusion()` combines vector + BM25 results with reciprocal rank fusion.
+  5. `KnowledgeStore.search()` signature unchanged — internal implementation enhanced.
+**Plans**: See 09-PLAN.md
+
+Plans:
+- [ ] 09-01: Implement cleaner, chunker upgrade, BM25, and fusion modules.
+- [ ] 09-02: Wire hybrid search into VectorKnowledgeStore.search().
+
 ## Progress
 
 **Execution Order:**
@@ -179,4 +196,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Markdown/Text RAG | 4/4 | Complete | 2026-05-22 |
 | 6. Planning Tools | 3/3 | Complete | 2026-05-22 |
 | 7. Evaluation and Release Readiness | 3/3 | Complete | 2026-05-22 |
-| 8. Knowledge RAG Vector Search | 2/2 | Complete | 2026-05-23 | | - |
+| 8. Knowledge RAG Vector Search | 2/2 | Complete | 2026-05-23 |
+| 9. RAG Pipeline Upgrade | 0/2 | Pending | - |

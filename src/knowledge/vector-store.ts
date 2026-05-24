@@ -449,8 +449,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     // Generate embedding for query
     const queryVector = await getEmbedding(query, this.embeddingConfig);
 
-    // Vector search (top 20)
-    let vectorSearchQuery = table.vectorSearch(queryVector).limit(20);
+    // Vector search (top 20) - explicitly specify 'vector' column since table has multiple vector columns
+    let vectorSearchQuery = table.vectorSearch(queryVector).column("vector").limit(20);
 
     // Add sourcePath filter if provided
     if (options?.sourcePath) {

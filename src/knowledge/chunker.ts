@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import type { KnowledgeChunk } from "./types.js";
+import { parseWikiLinks, parseImages, parseTags } from "./obsidian.js";
 
 /**
  * Supported file extensions for knowledge ingestion.
@@ -26,6 +27,8 @@ export interface ChunkOptions {
   maxChunkSize?: number;
   /** Overlap size in characters between adjacent chunks (default 80) */
   overlap?: number;
+  /** Obsidian vault path for parsing wiki links and images */
+  vaultPath?: string;
 }
 
 /**
@@ -34,6 +37,38 @@ export interface ChunkOptions {
 export function isSupportedExtension(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase();
   return SUPPORTED_EXTENSIONS.includes(ext as (typeof SUPPORTED_EXTENSIONS)[number]);
+}
+
+/**
+ * Build a KnowledgeChunk with optional Obsidian parsing.
+ */
+function buildChunk(
+  filePath: string,
+  headingLevel: number,
+  headingText: string,
+  text: string,
+  createdAt: string,
+  vaultPath?: string
+): KnowledgeChunk {
+  // Parse Obsidian features if vaultPath is provided
+  const linkedNotes = vaultPath ? parseWikiLinks(text) : undefined;
+  const images = vaultPath ? parseImages(text, vaultPath) : undefined;
+  const parsedTags = vaultPath ? parseTags(text) : undefined;
+
+  return {
+    id: randomUUID(),
+    sourcePath: filePath,
+    headingLevel,
+    headingText,
+    text,
+    startLine: 0,
+    endLine: 0,
+    tags: parsedTags ?? [],
+    createdAt,
+    // Add Obsidian-specific fields
+    ...(linkedNotes && linkedNotes.length > 0 ? { linkedNotes } : {}),
+    ...(images && images.length > 0 ? { images } : {}),
+  };
 }
 
 /**
@@ -66,14 +101,15 @@ export function chunkFile(
   const now = new Date().toISOString();
   const maxChunkSize = options?.maxChunkSize ?? 800;
   const overlap = options?.overlap ?? 80;
+  const vaultPath = options?.vaultPath;
 
   // Plain text files: paragraph-based chunking
   if (ext === ".txt") {
-    return chunkTextByParagraph(filePath, content, now, maxChunkSize, overlap);
+    return chunkTextByParagraph(filePath, content, now, maxChunkSize, overlap, vaultPath);
   }
 
   // Markdown files: three-layer chunking
-  return chunkMarkdown(filePath, content, now, maxChunkSize, overlap);
+  return chunkMarkdown(filePath, content, now, maxChunkSize, overlap, vaultPath);
 }
 
 /**
@@ -88,7 +124,8 @@ function chunkMarkdown(
   content: string,
   createdAt: string,
   maxChunkSize: number,
-  overlap: number
+  overlap: number,
+  vaultPath?: string
 ): KnowledgeChunk[] {
   const lines = content.split("\n");
   const headingRegex = /^(#{1,6})\s+(.+)$/;
@@ -194,18 +231,14 @@ function chunkMarkdown(
     }
 
     if (chunkText.length > 0) {
-      chunks.push({
-        id: randomUUID(),
-        sourcePath: filePath,
-        headingLevel: subChunk.headingLevel,
-        headingText: subChunk.headingText,
-        text: chunkText,
-        startLine: 0,
-        endLine: 0,
-        tags: [],
+      chunks.push(buildChunk(
+        filePath,
+        subChunk.headingLevel,
+        subChunk.headingText,
+        chunkText,
         createdAt,
-      });
-
+        vaultPath
+      ));
       previousChunkText = subChunk.text;
     }
   }
@@ -223,7 +256,8 @@ function chunkTextByParagraph(
   content: string,
   createdAt: string,
   maxChunkSize: number,
-  overlap: number
+  overlap: number,
+  vaultPath?: string
 ): KnowledgeChunk[] {
   const paragraphs = content.split(/\n\n+/);
   const chunks: KnowledgeChunk[] = [];
@@ -248,17 +282,14 @@ function chunkTextByParagraph(
         }
       }
 
-      chunks.push({
-        id: randomUUID(),
-        sourcePath: filePath,
-        headingLevel: 0,
-        headingText: "",
-        text: chunkText,
-        startLine: 0,
-        endLine: 0,
-        tags: [],
+      chunks.push(buildChunk(
+        filePath,
+        0,
+        "",
+        chunkText,
         createdAt,
-      });
+        vaultPath
+      ));
 
       previousChunkText = buffer.trim();
       buffer = trimmed;
@@ -278,17 +309,14 @@ function chunkTextByParagraph(
       }
     }
 
-    chunks.push({
-      id: randomUUID(),
-      sourcePath: filePath,
-      headingLevel: 0,
-      headingText: "",
-      text: chunkText,
-      startLine: 0,
-      endLine: 0,
-      tags: [],
+    chunks.push(buildChunk(
+      filePath,
+      0,
+      "",
+      chunkText,
       createdAt,
-    });
+      vaultPath
+    ));
   }
 
   // Handle single very long paragraph - hard break
@@ -309,17 +337,14 @@ function chunkTextByParagraph(
         }
       }
 
-      chunks.push({
-        id: randomUUID(),
-        sourcePath: filePath,
-        headingLevel: 0,
-        headingText: "",
-        text: chunkText,
-        startLine: 0,
-        endLine: 0,
-        tags: [],
+      chunks.push(buildChunk(
+        filePath,
+        0,
+        "",
+        chunkText,
         createdAt,
-      });
+        vaultPath
+      ));
 
       previousText = text.slice(offset, end);
       offset = end;

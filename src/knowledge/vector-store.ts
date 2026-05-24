@@ -16,6 +16,7 @@ import { chunkFile, isSupportedExtension } from "./chunker.js";
 import { cleanText, extractFrontmatter } from "./cleaner.js";
 import { BM25Retriever, type BM25Match } from "./bm25.js";
 import { rrfFusion, type VectorMatch, type FusedResult } from "./fusion.js";
+import { getMultimodalEmbedding, imageToBase64 } from "./multimodal-embedding.js";
 import type {
   KnowledgeChunk,
   KnowledgeManifest,
@@ -24,6 +25,7 @@ import type {
   ChunkMetadata,
   SourceMetadata,
   SearchOptions,
+  ImageReference,
 } from "./types.js";
 
 /**
@@ -56,6 +58,8 @@ export interface VectorKnowledgeStoreConfig {
   dbPath?: string;
   /** Knowledge source directory */
   sourceDir?: string;
+  /** Obsidian vault path for multimodal embedding */
+  vaultPath?: string;
 }
 
 /**
@@ -67,6 +71,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   private readonly embeddingConfig: EmbeddingConfig;
   private readonly dbPath: string;
   private readonly sourceDir: string;
+  private readonly vaultPath?: string;
   private db: lancedb.Connection | null = null;
   private table: lancedb.Table | null = null;
   private manifest: KnowledgeManifest | null = null;
@@ -77,6 +82,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     this.embeddingConfig = config?.embeddingConfig ?? createDefaultEmbeddingConfig();
     this.dbPath = config?.dbPath ?? ".smart-assistant/vectors";
     this.sourceDir = config?.sourceDir ?? resolveKnowledgeSourceDir();
+    this.vaultPath = config?.vaultPath;
   }
 
   /**
@@ -227,12 +233,36 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         const { body } = extractFrontmatter(cleaned);
 
         // Chunk with three-layer strategy and overlap
-        const chunks = chunkFile(sourceFile.path, body, { maxChunkSize: 800, overlap: 80 });
+        // Pass vaultPath for Obsidian parsing if configured
+        const chunks = chunkFile(sourceFile.path, body, {
+          maxChunkSize: 800,
+          overlap: 80,
+          vaultPath: this.vaultPath,
+        });
 
         // Generate embeddings and store in LanceDB
         for (const chunk of chunks) {
           try {
             const vector = await getEmbedding(chunk.text, this.embeddingConfig);
+
+            // Generate image vector for chunks with images if vaultPath is configured
+            let imageVector: number[] | undefined;
+            if (this.vaultPath && chunk.images && chunk.images.length > 0) {
+              try {
+                // Use the first image for multimodal embedding
+                const image = chunk.images[0];
+                const base64Image = await imageToBase64(image.path);
+                if (base64Image) {
+                  imageVector = await getMultimodalEmbedding(
+                    { text: chunk.text, image: base64Image },
+                    this.embeddingConfig
+                  );
+                }
+              } catch (error) {
+                // Log warning but continue with text-only embedding
+                console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);
+              }
+            }
 
             const record = {
               id: chunk.id,
@@ -243,6 +273,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
               headingLevel: chunk.headingLevel,
               tags: chunk.tags,
               createdAt: chunk.createdAt,
+              // Store image vector if available
+              ...(imageVector ? { imageVector } : {}),
             };
 
             await table.add([record]);
@@ -256,6 +288,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
               lineCount: chunk.endLine - chunk.startLine + 1,
               charCount: chunk.text.length,
               modifiedAt: chunk.createdAt,
+              // Add linkedNotes if present
+              ...(chunk.linkedNotes ? { linkedNotes: chunk.linkedNotes } : {}),
             });
           } catch (error) {
             // Log warning and skip chunks that fail to embed

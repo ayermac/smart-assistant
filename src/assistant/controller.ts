@@ -58,6 +58,7 @@ export class AssistantController {
   private readonly agent: Agent;
   private readonly sessionStore: SessionStore;
   private readonly sessionId: string;
+  private readonly knowledgeStore: VectorKnowledgeStore;
   private onEvent: ((event: AssistantEvent) => void) | null = null;
 
   /**
@@ -66,22 +67,33 @@ export class AssistantController {
    * @param initialMessages - Messages to restore from a previous session
    * @param sessionStore - Session persistence store
    * @param sessionId - ID of the current session
+   * @param agent - The agent instance
+   * @param knowledgeStore - The knowledge store for vault watching
    * @throws Error if required API key is not set
    */
   private constructor(
     initialMessages: AgentMessage[],
     sessionStore: SessionStore,
     sessionId: string,
-    agent: Agent
+    agent: Agent,
+    knowledgeStore: VectorKnowledgeStore
   ) {
     this.sessionStore = sessionStore;
     this.sessionId = sessionId;
     this.agent = agent;
+    this.knowledgeStore = knowledgeStore;
 
     // Subscribe to agent events once in constructor (fixes duplicate subscription bug)
     this.agent.subscribe((event: AgentEvent) => {
       this.handleAgentEvent(event);
     });
+  }
+
+  /**
+   * Get the knowledge store for vault watching.
+   */
+  getKnowledgeStore(): VectorKnowledgeStore {
+    return this.knowledgeStore;
   }
 
   /**
@@ -96,7 +108,8 @@ export class AssistantController {
   static async create(
     initialMessages: AgentMessage[],
     sessionStore: SessionStore,
-    sessionId: string
+    sessionId: string,
+    options?: { vaultPath?: string }
   ): Promise<AssistantController> {
     // Validate API key based on provider
     const provider = process.env.SMART_ASSISTANT_PROVIDER?.trim() || "anthropic";
@@ -112,7 +125,10 @@ export class AssistantController {
     await memoryStore.init();
 
     // Create and initialize knowledge store (vector-based)
-    const knowledgeStore = new VectorKnowledgeStore({ embeddingConfig });
+    const knowledgeStore = new VectorKnowledgeStore({
+      embeddingConfig,
+      vaultPath: options?.vaultPath,
+    });
     await knowledgeStore.init();
 
     // Create plan store
@@ -129,7 +145,7 @@ export class AssistantController {
       },
     });
 
-    return new AssistantController(initialMessages, sessionStore, sessionId, agent);
+    return new AssistantController(initialMessages, sessionStore, sessionId, agent, knowledgeStore);
   }
 
   /**

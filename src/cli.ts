@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveDataDir, resolveDataPaths, SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
 import { AssistantController, type AssistantEvent } from "./assistant/index.js";
 import { FileSessionStore, type SessionFile } from "./session/index.js";
+import { VaultWatcher } from "./knowledge/watcher.js";
 
 type CliOptions = {
   dataDir?: string;
@@ -148,14 +149,42 @@ async function runInteractive(options: CliOptions): Promise<void> {
   }
 
   // Initialize assistant controller with session
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH?.trim();
   let controller: AssistantController;
   try {
-    controller = await AssistantController.create(session.messages, sessionStore, session.id);
+    controller = await AssistantController.create(session.messages, sessionStore, session.id, {
+      vaultPath,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`Error: ${message}\n`);
     process.exitCode = 1;
     return;
+  }
+
+  // Set up Obsidian vault watching if configured
+  let vaultWatcher: VaultWatcher | null = null;
+  if (vaultPath) {
+    try {
+      const knowledgeStore = controller.getKnowledgeStore();
+
+      // Sync vault (incremental index based on modification times)
+      stdout.write(`Syncing Obsidian vault: ${vaultPath}\n`);
+      const syncStats = await knowledgeStore.syncVault(vaultPath);
+      stdout.write(`Vault sync complete: ${syncStats.added} added, ${syncStats.updated} updated, ${syncStats.removed} removed\n`);
+
+      // Start file watcher
+      vaultWatcher = new VaultWatcher({
+        vaultPath,
+        store: knowledgeStore,
+      });
+      vaultWatcher.start();
+      stdout.write(`Watching vault for changes...\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      stderr.write(`Warning: Failed to set up vault watching: ${message}\n`);
+      // Continue without watching - not a fatal error
+    }
   }
 
   const rl = createInterface({ input: stdin, output: stdout });
@@ -172,16 +201,29 @@ async function runInteractive(options: CliOptions): Promise<void> {
 
   // Handle SIGINT for graceful abort
   let isPromptInProgress = false;
-  const sigintHandler = () => {
+  const sigintHandler = async () => {
     if (isPromptInProgress) {
       controller.abort();
       stdout.write("\n[Aborted]\n");
     } else {
+      // Stop vault watcher gracefully
+      if (vaultWatcher) {
+        await vaultWatcher.stop();
+      }
       rl.close();
       process.exit(0);
     }
   };
   process.on("SIGINT", sigintHandler);
+
+  // Handle SIGTERM for graceful shutdown
+  process.on("SIGTERM", async () => {
+    if (vaultWatcher) {
+      await vaultWatcher.stop();
+    }
+    rl.close();
+    process.exit(0);
+  });
 
   // ANSI color codes
   const GREEN = "\x1b[32m";

@@ -20,3 +20,4 @@ export { cleanText, extractFrontmatter } from "./cleaner.js";
 export { BM25Retriever, type BM25Match } from "./bm25.js";
 export { rrfFusion, type VectorMatch, type FusedResult, type FusionOptions } from "./fusion.js";
 export { parseWikiLinks, parseImages, parseTags, resolveNotePath, getNotePathSync } from "./obsidian.js";
+export { getMultimodalEmbedding, imageToBase64, isImageEmbeddable, type MultimodalInput } from "./multimodal-embedding.js";

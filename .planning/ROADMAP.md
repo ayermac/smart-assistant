@@ -22,6 +22,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Knowledge RAG Vector Search** - Add semantic vector search to Knowledge RAG using LanceDB and Doubao embedding (reusing Memory infrastructure).
 - [x] **Phase 9: RAG Pipeline Upgrade** - Upgrade RAG to production-grade hybrid retrieval: text cleaning, three-layer chunking, BM25, RRF fusion. (completed 2026-05-23)
 
+- [x] **Phase 10: Obsidian Multimodal RAG** - Integrate Obsidian vault with multimodal support: wiki-links, images, and file watching.
+
 ## Phase Details
 
 ### Phase 1: Foundation and CLI Skeleton
@@ -182,10 +184,26 @@ Plans:
 - [x] 09-01: Implement cleaner, chunker upgrade, BM25, and fusion modules.
 - [x] 09-02: Wire hybrid search into VectorKnowledgeStore.search().
 
+### Phase 10: Obsidian Multimodal RAG
+**Goal**: Integrate Obsidian vault with multimodal support: parse wiki-links `[[note-name]]`, embed images using doubao-embedding-vision, and watch files for incremental updates.
+**Depends on**: Phase 9
+**Requirements**: [OBS-01, OBS-02, OBS-03, OBS-04]
+**Success Criteria** (what must be TRUE):
+  1. User can configure `OBSIDIAN_VAULT_PATH` to point to an Obsidian vault.
+  2. Wiki-links `[[note-name]]` are parsed and stored as `linkedNotes` metadata.
+  3. Images in Markdown are embedded using multimodal embedding (text + image fusion).
+  4. File changes in vault are detected and incrementally indexed.
+  5. Retrieval returns relevant chunks with linked notes and images.
+**Plans**: See 10-PLAN.md
+
+Plans:
+- [x] 10-01: Implement Obsidian parser and multimodal embedding.
+- [x] 10-02: Implement file watcher and incremental indexing.
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -198,3 +216,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 7. Evaluation and Release Readiness | 3/3 | Complete | 2026-05-22 |
 | 8. Knowledge RAG Vector Search | 2/2 | Complete | 2026-05-23 |
 | 9. RAG Pipeline Upgrade | 2/2 | Complete | 2026-05-23 |
+| 10. Obsidian Multimodal RAG | 2/2 | Complete | 2026-05-24 |

@@ -13,7 +13,8 @@
 | Feature | Description |
 |---------|-------------|
 | 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings |
-| 📚 **Knowledge RAG** | Hybrid retrieval: vector + BM25 + RRF fusion |
+| 📚 **Knowledge RAG** | Hybrid retrieval: vector + BM25 + RRF fusion, multimodal support |
+| 🔗 **Obsidian Integration** | Real-time sync, wiki-links parsing, image embedding |
 | 📋 **Task Planning** | Break down complex tasks into trackable steps |
 | 💬 **Session Persistence** | Resume conversations across sessions |
 | 🔒 **Local-First** | All data stored locally, no cloud required |
@@ -109,20 +110,26 @@ you> 搜索一下关于API设计的笔记
 assistant> According to `api-design.md > RESTful原则`，你的笔记中提到...
 ```
 
-### Hybrid Retrieval (v2.1)
+### Hybrid Retrieval (v2.2)
 
-Knowledge RAG uses **hybrid retrieval** for best results:
+Knowledge RAG uses **hybrid retrieval** with **multimodal support**:
 
 | Method | Strength | Example |
 |--------|----------|---------|
 | **Vector Search** | Semantic understanding | "身份认证" → "authentication" |
 | **BM25** | Exact keyword matching | "LLMRouter" → exact matches |
 | **RRF Fusion** | Combines both methods | Chunks in both lists rank higher |
+| **Multimodal Embedding** | Text + Image fusion | Query matches images in notes |
 
 **Search Pipeline:**
 ```
 query → vector search (top 20) + BM25 search (top 20) → RRF fusion → top N
 ```
+
+**Multimodal Support:**
+- Images in Markdown (`![](image.png)`) are embedded using `doubao-embedding-vision`
+- Text + Image fusion enables searching by image content
+- Requires `OBSIDIAN_VAULT_PATH` or images in knowledge directory
 
 ### Text Processing
 
@@ -220,7 +227,7 @@ smart-assistant/
 
 ## 📊 Evaluation
 
-v2.1 passes all acceptance criteria:
+v2.2 passes all acceptance criteria:
 
 | Case | Description | Status |
 |------|-------------|--------|
@@ -254,7 +261,8 @@ npm run eval       # Run evaluations
 
 ## ⚠️ Limitations
 
-- RAG supports Markdown/text files only (no PDF, docx, web crawling)
+- RAG supports Markdown/text files and images (no PDF, docx, web crawling)
+- Images require `doubao-embedding-vision` or compatible multimodal embedding model
 - No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)
 - CLI-only interface (Web UI planned for v3)

@@ -739,7 +739,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       const { body } = extractFrontmatter(cleaned);
 
       // Get relative path for storage
-      const relativePath = relative(this.sourceDir, filePath);
+      // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
+      const basePath = this.vaultPath ?? this.sourceDir;
+      const relativePath = relative(basePath, filePath);
 
       // Chunk with three-layer strategy and overlap
       const chunks = chunkFile(relativePath, body, {
@@ -862,7 +864,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     try {
       // Get relative path for matching
-      const relativePath = relative(this.sourceDir, filePath);
+      // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
+      const basePath = this.vaultPath ?? this.sourceDir;
+      const relativePath = relative(basePath, filePath);
 
       // Delete chunks matching this source path
       await table.delete(`sourcePath = '${relativePath}'`);

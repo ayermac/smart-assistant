@@ -10,6 +10,7 @@ export type {
   SourceMetadata,
   KnowledgeManifest,
   KnowledgeStore,
+  ImageReference,
 } from "./types.js";
 
 export { FileKnowledgeStore, type FileKnowledgeStoreConfig } from "./store.js";

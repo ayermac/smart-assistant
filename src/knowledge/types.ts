@@ -3,6 +3,18 @@
  */
 
 /**
+ * Reference to an image within a knowledge chunk.
+ */
+export interface ImageReference {
+  /** Absolute path to the image file */
+  path: string;
+  /** Relative path as it appears in Markdown */
+  relativePath: string;
+  /** Alt text from the image reference */
+  altText?: string;
+}
+
+/**
  * Represents a chunked segment of ingested knowledge.
  */
 export interface KnowledgeChunk {
@@ -15,6 +27,14 @@ export interface KnowledgeChunk {
   endLine: number;
   tags: string[];
   createdAt: string;
+  /** Images referenced in this chunk */
+  images?: ImageReference[];
+  /** Image embedding vector (text-image fusion) */
+  imageVector?: number[];
+  /** Wiki-linked note names from [[note-name]] references */
+  linkedNotes?: string[];
+  /** File last modified timestamp (for incremental updates) */
+  lastModified?: number;
 }
 
 /**
@@ -47,6 +67,8 @@ export interface ChunkMetadata {
   lineCount: number;
   charCount: number;
   modifiedAt: string;
+  /** Wiki-linked note names */
+  linkedNotes?: string[];
 }
 
 /**

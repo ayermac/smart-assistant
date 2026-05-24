@@ -79,6 +79,7 @@ assistant> 根据我存储的记忆，你的名字是小C。
 | `EMBEDDING_MODEL` | Embedding model (2048-dim) | `doubao-embedding-vision` |
 | `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | Knowledge source directory | `.smart-assistant/knowledge-sources` |
+| `OBSIDIAN_VAULT_PATH` | Obsidian vault path (optional) | *not set* |
 
 ---
 
@@ -131,6 +132,48 @@ query → vector search (top 20) + BM25 search (top 20) → RRF fusion → top N
 - **Max Chunk Size**: 800 characters (configurable)
 
 Supported file types: `.md`, `.txt`, `.markdown`
+
+---
+
+## 🔗 Obsidian Integration
+
+### Setup
+
+Configure your Obsidian vault path:
+
+```bash
+# In .env
+OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
+```
+
+### Features
+
+When `OBSIDIAN_VAULT_PATH` is configured:
+
+- **Real-time Sync**: CLI syncs vault on startup (incremental, based on file modification times)
+- **File Watching**: Automatically indexes new/modified/deleted files
+- **Wiki Links**: Parses `[[note-name]]` references for linked note retrieval
+- **Images**: Supports multimodal embedding for images in vault
+- **Tags**: Extracts `#tags` and frontmatter tags for metadata
+
+### Obsidian-Specific Parsing
+
+| Feature | Support |
+|---------|---------|
+| Markdown files | ✅ |
+| `[[wiki-links]]` | ✅ Parsed as linked notes |
+| `![](images)` | ✅ Multimodal embedding |
+| `#tags` | ✅ Metadata extraction |
+| Frontmatter (YAML) | ✅ Already supported |
+
+### Workflow
+
+1. Start CLI: `npm run dev`
+2. Vault sync runs automatically (shows stats)
+3. File watcher starts monitoring changes
+4. Create/modify/delete notes in Obsidian
+5. Changes are indexed automatically
+6. Query your vault in CLI
 
 ---
 

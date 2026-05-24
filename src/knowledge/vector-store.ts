@@ -602,4 +602,224 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const manifest = await this.getManifest();
     return manifest?.chunks ?? [];
   }
+
+  /**
+   * Index a single file.
+   * Reads file content, chunks it, generates embeddings, and stores in LanceDB.
+   */
+  async indexFile(filePath: string): Promise<void> {
+    const table = this.ensureTable();
+
+    try {
+      const content = await readFile(filePath, "utf8");
+
+      // Apply text cleaning before chunking
+      const cleaned = cleanText(content);
+
+      // Extract frontmatter if present
+      const { body } = extractFrontmatter(cleaned);
+
+      // Get relative path for storage
+      const relativePath = relative(this.sourceDir, filePath);
+
+      // Chunk with three-layer strategy and overlap
+      const chunks = chunkFile(relativePath, body, {
+        maxChunkSize: 800,
+        overlap: 80,
+        vaultPath: this.vaultPath,
+      });
+
+      // Get file modification time
+      const fileStat = await stat(filePath);
+      const lastModified = fileStat.mtimeMs;
+
+      // Generate embeddings and store in LanceDB
+      for (const chunk of chunks) {
+        try {
+          const vector = await getEmbedding(chunk.text, this.embeddingConfig);
+
+          // Generate image vector for chunks with images if vaultPath is configured
+          let imageVector: number[] | undefined;
+          if (this.vaultPath && chunk.images && chunk.images.length > 0) {
+            try {
+              const image = chunk.images[0];
+              const base64Image = await imageToBase64(image.path);
+              if (base64Image) {
+                imageVector = await getMultimodalEmbedding(
+                  { text: chunk.text, image: base64Image },
+                  this.embeddingConfig
+                );
+              }
+            } catch (error) {
+              console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);
+            }
+          }
+
+          const record = {
+            id: chunk.id,
+            vector,
+            text: chunk.text,
+            sourcePath: chunk.sourcePath,
+            headingText: chunk.headingText,
+            headingLevel: chunk.headingLevel,
+            tags: chunk.tags,
+            createdAt: chunk.createdAt,
+            lastModified,
+            ...(imageVector ? { imageVector } : {}),
+          };
+
+          await table.add([record]);
+        } catch (error) {
+          console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
+        }
+      }
+
+      // Mark BM25 index for rebuild
+      this.bm25NeedsRebuild = true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to index file ${filePath}: ${message}`);
+    }
+  }
+
+  /**
+   * Reindex a file by removing old chunks and adding new ones.
+   */
+  async reindexFile(filePath: string): Promise<void> {
+    await this.removeFile(filePath);
+    await this.indexFile(filePath);
+  }
+
+  /**
+   * Remove all chunks belonging to a file.
+   */
+  async removeFile(filePath: string): Promise<void> {
+    const table = this.ensureTable();
+
+    try {
+      // Get relative path for matching
+      const relativePath = relative(this.sourceDir, filePath);
+
+      // Delete chunks matching this source path
+      await table.delete(`sourcePath = '${relativePath}'`);
+
+      // Mark BM25 index for rebuild
+      this.bm25NeedsRebuild = true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to remove file ${filePath}: ${message}`);
+    }
+  }
+
+  /**
+   * Sync vault by comparing modification times and processing only changed files.
+   * Returns statistics about the sync operation.
+   */
+  async syncVault(vaultPath: string): Promise<{ added: number; updated: number; removed: number }> {
+    const table = this.ensureTable();
+    const stats = { added: 0, updated: 0, removed: 0 };
+
+    // Scan vault for current files
+    const currentFiles = await this.scanVaultFiles(vaultPath);
+    const currentPaths = new Set(currentFiles.map((f) => f.path));
+
+    // Get existing chunks from LanceDB to find removed files
+    const results = await table.query()
+      .select(["sourcePath", "lastModified"])
+      .toArray();
+
+    const existingFiles = new Map<string, number>();
+    for (const row of results) {
+      const record = row as { sourcePath?: string; lastModified?: number };
+      if (record.sourcePath) {
+        // Keep track of the most recent lastModified for each file
+        const existing = existingFiles.get(record.sourcePath) ?? 0;
+        if (record.lastModified && record.lastModified > existing) {
+          existingFiles.set(record.sourcePath, record.lastModified);
+        }
+      }
+    }
+
+    // Find and remove deleted files
+    for (const [sourcePath] of existingFiles) {
+      if (!currentPaths.has(sourcePath)) {
+        try {
+          await table.delete(`sourcePath = '${sourcePath}'`);
+          stats.removed++;
+        } catch (error) {
+          console.warn(`Failed to remove deleted file ${sourcePath}: ${error}`);
+        }
+      }
+    }
+
+    // Process current files
+    for (const file of currentFiles) {
+      const existingMtime = existingFiles.get(file.path);
+
+      if (!existingMtime) {
+        // New file - index it
+        try {
+          await this.indexFile(file.absolutePath);
+          stats.added++;
+        } catch (error) {
+          console.warn(`Failed to index new file ${file.path}: ${error}`);
+        }
+      } else if (file.mtime > existingMtime) {
+        // Modified file - reindex it
+        try {
+          await this.reindexFile(file.absolutePath);
+          stats.updated++;
+        } catch (error) {
+          console.warn(`Failed to reindex modified file ${file.path}: ${error}`);
+        }
+      }
+    }
+
+    // Mark BM25 index for rebuild
+    if (stats.added > 0 || stats.updated > 0 || stats.removed > 0) {
+      this.bm25NeedsRebuild = true;
+    }
+
+    return stats;
+  }
+
+  /**
+   * Scan vault directory for Markdown files.
+   */
+  private async scanVaultFiles(vaultPath: string): Promise<SourceMetadata[]> {
+    const files: SourceMetadata[] = [];
+
+    const scan = async (dir: string): Promise<void> => {
+      let entries: string[];
+      try {
+        entries = await readdir(dir);
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        // Skip hidden files and directories
+        if (entry.startsWith(".")) {
+          continue;
+        }
+
+        const fullPath = join(dir, entry);
+        const fileStat = await stat(fullPath);
+
+        if (fileStat.isDirectory()) {
+          await scan(fullPath);
+        } else if (fileStat.isFile() && isSupportedExtension(entry)) {
+          files.push({
+            path: relative(vaultPath, fullPath),
+            absolutePath: fullPath,
+            mtime: fileStat.mtimeMs,
+            chunkCount: 0,
+          });
+        }
+      }
+    };
+
+    await scan(vaultPath);
+    return files;
+  }
 }

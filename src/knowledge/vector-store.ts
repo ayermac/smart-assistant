@@ -29,6 +29,25 @@ import type {
 } from "./types.js";
 
 /**
+ * Delay for rate limiting between API calls.
+ */
+const EMBED_DELAY_MS = 200;
+
+/**
+ * Maximum retries for embedding API calls on rate limit errors.
+ */
+const MAX_RETRIES = 3;
+
+/**
+ * Base delay for exponential backoff on rate limit errors.
+ */
+const RETRY_BASE_DELAY_MS = 1000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Vector dimensions for Doubao embedding model.
  * doubao-embedding-vision produces 2048-dimensional vectors.
  */
@@ -98,6 +117,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const tableNames = await this.db.tableNames();
     if (tableNames.includes("knowledge")) {
       this.table = await this.db.openTable("knowledge");
+
+      // Migrate schema: add missing columns if they don't exist
+      await this.migrateSchema();
     } else {
       // Create table with explicit schema
       const schema = new Schema([
@@ -109,9 +131,91 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         new Field("headingLevel", new Int32(), false),
         new Field("tags", new List(new Field("item", new Utf8()))),
         new Field("createdAt", new Utf8(), false),
+        // New columns for Phase 10 (optional)
+        new Field("lastModified", new Int32(), true), // file mtime, nullable
+        new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
+        new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
       ]);
 
       this.table = await this.db.createEmptyTable("knowledge", schema);
+    }
+  }
+
+  /**
+   * Migrate schema to add missing columns from newer versions.
+   * LanceDB supports adding columns via addColumns method.
+   */
+  private async migrateSchema(): Promise<void> {
+    const table = this.ensureTable();
+
+    // Get current schema
+    let schema;
+    try {
+      schema = await table.schema();
+    } catch {
+      // Table might be empty or have issues, skip migration
+      return;
+    }
+
+    const existingFields = new Set(schema.fields.map((f) => f.name));
+
+    // Check if migration is needed
+    if (existingFields.has("lastModified") && existingFields.has("linkedNotes")) {
+      // Schema is up to date
+      return;
+    }
+
+    // LanceDB requires the table to have at least one row to add columns
+    // If table is empty, we need to clear it and let the new schema take effect
+    const count = await table.countRows();
+    if (count === 0) {
+      // Table is empty, drop and recreate with full schema
+      try {
+        await this.db!.dropTable("knowledge");
+
+        // Recreate with full schema
+        const newSchema = new Schema([
+          new Field("id", new Utf8(), false),
+          new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
+          new Field("text", new Utf8(), false),
+          new Field("sourcePath", new Utf8(), false),
+          new Field("headingText", new Utf8(), false),
+          new Field("headingLevel", new Int32(), false),
+          new Field("tags", new List(new Field("item", new Utf8()))),
+          new Field("createdAt", new Utf8(), false),
+          // New columns for Phase 10 (optional)
+          new Field("lastModified", new Int32(), true), // file mtime, nullable
+          new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
+          new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
+        ]);
+
+        this.table = await this.db!.createEmptyTable("knowledge", newSchema);
+        console.log("Migrated knowledge table schema: recreated with new columns");
+      } catch (error) {
+        console.warn(`Failed to recreate table: ${error}`);
+      }
+      return;
+    }
+
+    // Table has rows, try to add columns
+    const columnsToAdd: { name: string; valueSql: string }[] = [];
+
+    if (!existingFields.has("lastModified")) {
+      columnsToAdd.push({ name: "lastModified", valueSql: "0" });
+    }
+
+    if (!existingFields.has("linkedNotes")) {
+      columnsToAdd.push({ name: "linkedNotes", valueSql: "[]" });
+    }
+
+    if (columnsToAdd.length > 0) {
+      try {
+        await table.addColumns(columnsToAdd);
+        console.log(`Migrated knowledge table schema: added ${columnsToAdd.map(c => c.name).join(", ")}`);
+      } catch (error) {
+        console.warn(`Failed to migrate schema: ${error}`);
+        // Continue without new columns - will use fallback behavior
+      }
     }
   }
 
@@ -610,6 +714,21 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   async indexFile(filePath: string): Promise<void> {
     const table = this.ensureTable();
 
+    // Check schema for optional fields
+    let schemaHasLastModified = false;
+    let schemaHasLinkedNotes = false;
+    let schemaHasImageVector = false;
+
+    try {
+      const schema = await table.schema();
+      const fieldNames = new Set(schema.fields.map(f => f.name));
+      schemaHasLastModified = fieldNames.has("lastModified");
+      schemaHasLinkedNotes = fieldNames.has("linkedNotes");
+      schemaHasImageVector = fieldNames.has("imageVector");
+    } catch {
+      // Schema check failed, assume base schema only
+    }
+
     try {
       const content = await readFile(filePath, "utf8");
 
@@ -629,22 +748,55 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         vaultPath: this.vaultPath,
       });
 
-      // Get file modification time
-      const fileStat = await stat(filePath);
-      const lastModified = fileStat.mtimeMs;
+      // Get file modification time (only used if schema supports it)
+      let lastModified: number | undefined;
+      if (schemaHasLastModified) {
+        const fileStat = await stat(filePath);
+        lastModified = fileStat.mtimeMs;
+      }
 
       // Generate embeddings and store in LanceDB
-      for (const chunk of chunks) {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+
         try {
-          const vector = await getEmbedding(chunk.text, this.embeddingConfig);
+          // Add delay between chunks for rate limiting (skip first chunk)
+          if (i > 0) {
+            await delay(EMBED_DELAY_MS);
+          }
+
+          // Get embedding with retry logic for rate limiting
+          let vector: number[] | null = null;
+          for (let retry = 0; retry < MAX_RETRIES; retry++) {
+            try {
+              vector = await getEmbedding(chunk.text, this.embeddingConfig);
+              break;
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              if (errorMsg.includes("429") || errorMsg.includes("RateLimit")) {
+                // Rate limit - exponential backoff
+                const backoffDelay = RETRY_BASE_DELAY_MS * Math.pow(2, retry);
+                console.warn(`Rate limit hit, retrying in ${backoffDelay}ms (attempt ${retry + 1}/${MAX_RETRIES})`);
+                await delay(backoffDelay);
+                continue;
+              }
+              throw error;
+            }
+          }
+
+          if (!vector) {
+            console.warn(`Failed to embed chunk ${chunk.id} after ${MAX_RETRIES} retries`);
+            continue;
+          }
 
           // Generate image vector for chunks with images if vaultPath is configured
           let imageVector: number[] | undefined;
-          if (this.vaultPath && chunk.images && chunk.images.length > 0) {
+          if (this.vaultPath && chunk.images && chunk.images.length > 0 && schemaHasImageVector) {
             try {
               const image = chunk.images[0];
               const base64Image = await imageToBase64(image.path);
               if (base64Image) {
+                await delay(EMBED_DELAY_MS); // Delay before multimodal embedding
                 imageVector = await getMultimodalEmbedding(
                   { text: chunk.text, image: base64Image },
                   this.embeddingConfig
@@ -655,7 +807,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
             }
           }
 
-          const record = {
+          // Build record, only including optional fields if schema supports them
+          const record: Record<string, unknown> = {
             id: chunk.id,
             vector,
             text: chunk.text,
@@ -664,9 +817,20 @@ export class VectorKnowledgeStore implements KnowledgeStore {
             headingLevel: chunk.headingLevel,
             tags: chunk.tags,
             createdAt: chunk.createdAt,
-            lastModified,
-            ...(imageVector ? { imageVector } : {}),
           };
+
+          // Add optional fields only if schema supports them
+          if (schemaHasLastModified && lastModified !== undefined) {
+            record.lastModified = lastModified;
+          }
+
+          if (schemaHasLinkedNotes && chunk.linkedNotes && chunk.linkedNotes.length > 0) {
+            record.linkedNotes = chunk.linkedNotes;
+          }
+
+          if (imageVector) {
+            record.imageVector = imageVector;
+          }
 
           await table.add([record]);
         } catch (error) {
@@ -724,19 +888,47 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const currentPaths = new Set(currentFiles.map((f) => f.path));
 
     // Get existing chunks from LanceDB to find removed files
-    const results = await table.query()
-      .select(["sourcePath", "lastModified"])
-      .toArray();
+    // Try to query with lastModified, but fall back gracefully if the column doesn't exist
+    let existingFiles = new Map<string, number>();
 
-    const existingFiles = new Map<string, number>();
-    for (const row of results) {
-      const record = row as { sourcePath?: string; lastModified?: number };
-      if (record.sourcePath) {
-        // Keep track of the most recent lastModified for each file
-        const existing = existingFiles.get(record.sourcePath) ?? 0;
-        if (record.lastModified && record.lastModified > existing) {
-          existingFiles.set(record.sourcePath, record.lastModified);
+    try {
+      const results = await table.query()
+        .select(["sourcePath", "lastModified"])
+        .toArray();
+
+      for (const row of results) {
+        const record = row as { sourcePath?: string; lastModified?: number };
+        if (record.sourcePath) {
+          // Keep track of the most recent lastModified for each file
+          const existing = existingFiles.get(record.sourcePath) ?? 0;
+          if (record.lastModified && record.lastModified > existing) {
+            existingFiles.set(record.sourcePath, record.lastModified);
+          }
         }
+      }
+    } catch (error) {
+      // Column doesn't exist yet - treat all files as new
+      // This happens when upgrading from an older schema
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("lastModified")) {
+        console.log("Note: lastModified column not found, performing full sync");
+        // Query just sourcePath to get existing files
+        try {
+          const results = await table.query()
+            .select(["sourcePath"])
+            .toArray();
+
+          for (const row of results) {
+            const record = row as { sourcePath?: string };
+            if (record.sourcePath) {
+              existingFiles.set(record.sourcePath, 0);
+            }
+          }
+        } catch {
+          // If even this fails, proceed with empty existing files
+        }
+      } else {
+        throw error;
       }
     }
 
@@ -752,12 +944,23 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       }
     }
 
-    // Process current files
-    for (const file of currentFiles) {
+    // Process current files (sequential with delay to avoid rate limiting)
+    const totalFiles = currentFiles.length;
+    let processedFiles = 0;
+
+    for (let i = 0; i < currentFiles.length; i++) {
+      const file = currentFiles[i];
       const existingMtime = existingFiles.get(file.path);
+
+      // Add delay between files for rate limiting (skip first file)
+      if (i > 0) {
+        await delay(EMBED_DELAY_MS);
+      }
 
       if (!existingMtime) {
         // New file - index it
+        processedFiles++;
+        console.log(`[${processedFiles}/${totalFiles}] Indexing: ${file.path}`);
         try {
           await this.indexFile(file.absolutePath);
           stats.added++;
@@ -766,6 +969,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         }
       } else if (file.mtime > existingMtime) {
         // Modified file - reindex it
+        processedFiles++;
+        console.log(`[${processedFiles}/${totalFiles}] Reindexing: ${file.path}`);
         try {
           await this.reindexFile(file.absolutePath);
           stats.updated++;
@@ -773,6 +978,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           console.warn(`Failed to reindex modified file ${file.path}: ${error}`);
         }
       }
+    }
+
+    if (processedFiles === 0) {
+      console.log(`Vault already up to date (${totalFiles} files)`);
     }
 
     // Mark BM25 index for rebuild

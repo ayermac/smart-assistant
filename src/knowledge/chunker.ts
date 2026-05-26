@@ -13,11 +13,13 @@ import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import type { KnowledgeChunk } from "./types.js";
 import { parseWikiLinks, parseImages, parseTags } from "./obsidian.js";
+import { isLoaderSupported, getSupportedExtensions, loadDocument, type LoadedDocument } from "./loaders/index.js";
 
 /**
  * Supported file extensions for knowledge ingestion.
+ * Includes text formats (md, txt) and binary formats (pdf, docx) via loaders.
  */
-export const SUPPORTED_EXTENSIONS = [".md", ".markdown", ".txt"] as const;
+export const SUPPORTED_EXTENSIONS = [".md", ".markdown", ".txt", ".pdf", ".docx"] as const;
 
 /**
  * Options for chunking behavior.
@@ -39,6 +41,58 @@ export interface ChunkOptions {
 export function isSupportedExtension(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase();
   return SUPPORTED_EXTENSIONS.includes(ext as (typeof SUPPORTED_EXTENSIONS)[number]);
+}
+
+/**
+ * Check if a file format requires document loading (binary formats).
+ */
+export function isBinaryFormat(filePath: string): boolean {
+  const ext = extname(filePath).toLowerCase();
+  return [".pdf", ".docx"].includes(ext);
+}
+
+/**
+ * Load and chunk a binary document (PDF, DOCX).
+ *
+ * @param filePath - Path to the file
+ * @param options - Chunking options
+ * @returns Array of KnowledgeChunks
+ */
+export async function chunkBinaryFile(
+  filePath: string,
+  options?: ChunkOptions
+): Promise<KnowledgeChunk[]> {
+  // Load document using appropriate loader
+  const doc = await loadDocument(filePath);
+
+  // Chunk the loaded document
+  return chunkDocument(filePath, doc, options);
+}
+
+/**
+ * Chunk a loaded document into KnowledgeChunks.
+ *
+ * @param filePath - Original file path (for metadata)
+ * @param doc - Loaded document with text and metadata
+ * @param options - Chunking options
+ * @returns Array of KnowledgeChunks
+ */
+export function chunkDocument(
+  filePath: string,
+  doc: LoadedDocument,
+  options?: ChunkOptions
+): KnowledgeChunk[] {
+  // Empty content returns empty array
+  if (!doc.text || doc.text.trim().length === 0) {
+    return [];
+  }
+
+  const now = new Date().toISOString();
+  const maxChunkSize = options?.maxChunkSize ?? 800;
+  const overlap = options?.overlap ?? 80;
+
+  // Use paragraph-based chunking for document text
+  return chunkTextByParagraph(filePath, doc.text, now, maxChunkSize, overlap, options?.vaultPath, options?.sourceFilePath);
 }
 
 /**

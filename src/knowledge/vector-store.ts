@@ -777,6 +777,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       }
 
       // Generate embeddings and store in LanceDB
+      let imageVectorsStored = 0;
+      let imageVectorsFailed = 0;
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
 
@@ -831,9 +834,11 @@ export class VectorKnowledgeStore implements KnowledgeStore {
                 console.log(`[indexFile] Image vector generated successfully, length: ${imageVector.length}`);
               } else {
                 console.warn(`[indexFile] imageToBase64 returned empty string for ${image.path}`);
+                imageVectorsFailed++;
               }
             } catch (error) {
               console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);
+              imageVectorsFailed++;
             }
           }
 
@@ -860,12 +865,18 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
           if (imageVector) {
             record.imageVector = imageVector;
+            imageVectorsStored++;
           }
 
           await table.add([record]);
         } catch (error) {
           console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
         }
+      }
+
+      // Summary log for image vectors
+      if (chunksWithImages.length > 0) {
+        console.log(`[indexFile] Image vector summary: ${imageVectorsStored} stored, ${imageVectorsFailed} failed, ${chunksWithImages.length} total chunks with images`);
       }
 
       // Mark BM25 index for rebuild

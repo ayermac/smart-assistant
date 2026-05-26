@@ -12,7 +12,7 @@ import { mkdir, readdir, stat, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { resolveKnowledgeSourceDir } from "../config.js";
 import { getEmbedding, createDefaultEmbeddingConfig, type EmbeddingConfig } from "../memory/embedding.js";
-import { chunkFile, isSupportedExtension } from "./chunker.js";
+import { chunkFile, chunkBinaryFile, isSupportedExtension, isBinaryFormat } from "./chunker.js";
 import { cleanText, extractFrontmatter } from "./cleaner.js";
 import { BM25Retriever, type BM25Match } from "./bm25.js";
 import { rrfFusion, type VectorMatch, type FusedResult } from "./fusion.js";
@@ -738,26 +738,41 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     console.log(`[indexFile] Schema has imageVector: ${schemaHasImageVector}`);
 
     try {
-      const content = await readFile(filePath, "utf8");
-
-      // Apply text cleaning before chunking
-      const cleaned = cleanText(content);
-
-      // Extract frontmatter if present
-      const { body } = extractFrontmatter(cleaned);
-
       // Get relative path for storage
       // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
       const basePath = this.vaultPath ?? this.sourceDir;
       const relativePath = relative(basePath, filePath);
 
-      // Chunk with three-layer strategy and overlap
-      const chunks = chunkFile(relativePath, body, {
-        maxChunkSize: 800,
-        overlap: 80,
-        vaultPath: this.vaultPath,
-        sourceFilePath: filePath,
-      });
+      // Determine how to chunk based on file type
+      let chunks: KnowledgeChunk[];
+
+      if (isBinaryFormat(filePath)) {
+        // Binary format (PDF, DOCX) - use document loader
+        console.log(`[indexFile] Loading binary document: ${filePath}`);
+        chunks = await chunkBinaryFile(relativePath, {
+          maxChunkSize: 800,
+          overlap: 80,
+          vaultPath: this.vaultPath,
+          sourceFilePath: filePath,
+        });
+      } else {
+        // Text format (Markdown, TXT) - read and chunk directly
+        const content = await readFile(filePath, "utf8");
+
+        // Apply text cleaning before chunking
+        const cleaned = cleanText(content);
+
+        // Extract frontmatter if present
+        const { body } = extractFrontmatter(cleaned);
+
+        // Chunk with three-layer strategy and overlap
+        chunks = chunkFile(relativePath, body, {
+          maxChunkSize: 800,
+          overlap: 80,
+          vaultPath: this.vaultPath,
+          sourceFilePath: filePath,
+        });
+      }
 
       // Debug: Log chunk image detection
       const chunksWithImages = chunks.filter(c => c.images && c.images.length > 0);

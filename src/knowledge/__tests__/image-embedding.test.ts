@@ -8,116 +8,80 @@
  * 4. imageToBase64 throws on missing file
  */
 
-import { strict as assert } from "node:assert";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
+import { join } from "node:path";
 import { parseImages } from "../obsidian.js";
 import { imageToBase64 } from "../multimodal-embedding.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+describe("parseImages", () => {
+  it("should preserve absolute paths", () => {
+    const vaultPath = "/Users/test/vault";
+    const sourceFilePath = "/Users/test/vault/notes/project/note.md";
+    const content = '![alt](/absolute/path/image.png)';
 
-/**
- * Test parseImages path resolution.
- */
-function testParseImagesPaths(): void {
-  const vaultPath = "/Users/test/vault";
-  const sourceFilePath = "/Users/test/vault/notes/project/note.md";
+    const images = parseImages(content, vaultPath, sourceFilePath);
 
-  // Test 1: Absolute path - used as-is
-  const absoluteContent = '![alt](/absolute/path/image.png)';
-  const absoluteImages = parseImages(absoluteContent, vaultPath, sourceFilePath);
-  assert.equal(absoluteImages.length, 1, "Should parse absolute path");
-  assert.equal(absoluteImages[0].path, "/absolute/path/image.png", "Absolute path should be preserved");
+    expect(images.length).toBe(1);
+    expect(images[0].path).toBe("/absolute/path/image.png");
+  });
 
-  // Test 2: Relative to note (./) - resolved relative to source file's directory
-  const relativeNoteContent = '![alt](./image.png)';
-  const relativeNoteImages = parseImages(relativeNoteContent, vaultPath, sourceFilePath);
-  assert.equal(relativeNoteImages.length, 1, "Should parse relative path");
-  assert.equal(
-    relativeNoteImages[0].path,
-    join("/Users/test/vault/notes/project", "./image.png"),
-    "Relative path should be resolved from note's directory"
-  );
+  it("should resolve ./ paths relative to note directory", () => {
+    const vaultPath = "/Users/test/vault";
+    const sourceFilePath = "/Users/test/vault/notes/project/note.md";
+    const content = '![alt](./image.png)';
 
-  // Test 3: Parent directory (../) - resolved relative to source file's parent
-  const parentDirContent = '![alt](../assets/image.png)';
-  const parentDirImages = parseImages(parentDirContent, vaultPath, sourceFilePath);
-  assert.equal(parentDirImages.length, 1, "Should parse parent relative path");
-  assert.equal(
-    parentDirImages[0].path,
-    join("/Users/test/vault/notes/project", "../assets/image.png"),
-    "Parent relative path should be resolved correctly"
-  );
+    const images = parseImages(content, vaultPath, sourceFilePath);
 
-  // Test 4: Vault-relative path (no ./ or ../) - resolved relative to vault root
-  const vaultRelativeContent = '![alt](attachments/image.png)';
-  const vaultRelativeImages = parseImages(vaultRelativeContent, vaultPath, sourceFilePath);
-  assert.equal(vaultRelativeImages.length, 1, "Should parse vault-relative path");
-  assert.equal(
-    vaultRelativeImages[0].path,
-    join(vaultPath, "attachments/image.png"),
-    "Vault-relative path should be resolved from vault root"
-  );
+    expect(images.length).toBe(1);
+    expect(images[0].path).toBe(join("/Users/test/vault/notes/project", "./image.png"));
+  });
 
-  // Test 5: External URL - skipped
-  const urlContent = '![alt](https://example.com/image.png)';
-  const urlImages = parseImages(urlContent, vaultPath, sourceFilePath);
-  assert.equal(urlImages.length, 0, "External URLs should be skipped");
+  it("should resolve ../ paths relative to note parent directory", () => {
+    const vaultPath = "/Users/test/vault";
+    const sourceFilePath = "/Users/test/vault/notes/project/note.md";
+    const content = '![alt](../assets/image.png)';
 
-  // Test 6: No sourceFilePath - all relative paths resolved to vault root
-  const noSourceContent = '![alt](image.png)';
-  const noSourceImages = parseImages(noSourceContent, vaultPath);
-  assert.equal(noSourceImages.length, 1, "Should parse path without source file");
-  assert.equal(
-    noSourceImages[0].path,
-    join(vaultPath, "image.png"),
-    "Without sourceFilePath, relative path should resolve to vault root"
-  );
+    const images = parseImages(content, vaultPath, sourceFilePath);
 
-  console.log("[PASS] testParseImagesPaths");
-}
+    expect(images.length).toBe(1);
+    expect(images[0].path).toBe(join("/Users/test/vault/notes/project", "../assets/image.png"));
+  });
 
-/**
- * Test imageToBase64 error handling.
- */
-async function testImageToBase64Errors(): Promise<void> {
-  // Test 1: Empty path throws
-  try {
-    await imageToBase64("");
-    assert.fail("Should throw on empty path");
-  } catch (error) {
-    assert.ok(error instanceof Error, "Should throw Error");
-    assert.ok(error.message.includes("path is required"), "Should mention path is required");
-  }
+  it("should resolve vault-relative paths from vault root", () => {
+    const vaultPath = "/Users/test/vault";
+    const sourceFilePath = "/Users/test/vault/notes/project/note.md";
+    const content = '![alt](attachments/image.png)';
 
-  // Test 2: Non-existent file throws
-  try {
-    await imageToBase64("/nonexistent/path/image.png");
-    assert.fail("Should throw on non-existent file");
-  } catch (error) {
-    assert.ok(error instanceof Error, "Should throw Error");
-    assert.ok(error.message.includes("not found"), "Should mention file not found");
-  }
+    const images = parseImages(content, vaultPath, sourceFilePath);
 
-  // Test 3: Unsupported extension throws
-  try {
-    await imageToBase64("/some/path/image.txt");
-    assert.fail("Should throw on unsupported extension");
-  } catch (error) {
-    assert.ok(error instanceof Error, "Should throw Error");
-    assert.ok(error.message.includes("Unsupported"), "Should mention unsupported format");
-  }
+    expect(images.length).toBe(1);
+    expect(images[0].path).toBe(join(vaultPath, "attachments/image.png"));
+  });
 
-  console.log("[PASS] testImageToBase64Errors");
-}
+  it("should skip external URLs", () => {
+    const vaultPath = "/Users/test/vault";
+    const sourceFilePath = "/Users/test/vault/notes/project/note.md";
+    const content = '![alt](https://example.com/image.png)';
 
-/**
- * Test parseImages with multiple images.
- */
-function testParseImagesMultiple(): void {
-  const vaultPath = "/Users/test/vault";
-  const content = `
+    const images = parseImages(content, vaultPath, sourceFilePath);
+
+    expect(images.length).toBe(0);
+  });
+
+  it("should resolve to vault root when no sourceFilePath provided", () => {
+    const vaultPath = "/Users/test/vault";
+    const content = '![alt](image.png)';
+
+    const images = parseImages(content, vaultPath);
+
+    expect(images.length).toBe(1);
+    expect(images[0].path).toBe(join(vaultPath, "image.png"));
+  });
+
+  it("should parse multiple images and skip external URLs", () => {
+    const vaultPath = "/Users/test/vault";
+    const sourceFilePath = "/Users/test/vault/notes/note.md";
+    const content = `
 # Document with images
 
 First image: ![](./image1.png)
@@ -129,33 +93,25 @@ External: ![external](https://example.com/external.png)
 Third: ![third](../images/image3.gif)
 `;
 
-  const images = parseImages(content, vaultPath, "/Users/test/vault/notes/note.md");
-  assert.equal(images.length, 3, "Should parse 3 images (external URL skipped)");
+    const images = parseImages(content, vaultPath, sourceFilePath);
 
-  // Check paths are resolved correctly
-  // Note: join normalizes paths, so ./ becomes just the directory
-  assert.ok(images[0].path.includes("notes/image1.png"), `First image path: ${images[0].path}`);
-  assert.ok(images[1].path.includes("attachments/image2.jpg"), `Second image path: ${images[1].path}`);
-  assert.ok(images[2].path.includes("images/image3.gif"), `Third image path: ${images[2].path}`);
+    expect(images.length).toBe(3);
+    expect(images[0].path).toContain("notes/image1.png");
+    expect(images[1].path).toContain("attachments/image2.jpg");
+    expect(images[2].path).toContain("images/image3.gif");
+  });
+});
 
-  console.log("[PASS] testParseImagesMultiple");
-}
+describe("imageToBase64", () => {
+  it("should throw on empty path", async () => {
+    await expect(imageToBase64("")).rejects.toThrow("path is required");
+  });
 
-/**
- * Run all tests.
- */
-async function runTests(): Promise<void> {
-  console.log("Running image embedding tests...\n");
+  it("should throw on non-existent file", async () => {
+    await expect(imageToBase64("/nonexistent/path/image.png")).rejects.toThrow("not found");
+  });
 
-  testParseImagesPaths();
-  await testImageToBase64Errors();
-  testParseImagesMultiple();
-
-  console.log("\nAll tests passed!");
-}
-
-// Run tests
-runTests().catch((error) => {
-  console.error("Test failed:", error);
-  process.exit(1);
+  it("should throw on unsupported extension", async () => {
+    await expect(imageToBase64("/some/path/image.txt")).rejects.toThrow("Unsupported");
+  });
 });

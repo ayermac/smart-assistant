@@ -17,6 +17,8 @@ import { cleanText, extractFrontmatter } from "./cleaner.js";
 import { BM25Retriever, type BM25Match } from "./bm25.js";
 import { rrfFusion, type VectorMatch, type FusedResult } from "./fusion.js";
 import { getMultimodalEmbedding, imageToBase64 } from "./multimodal-embedding.js";
+import type { Reranker } from "./rerank/index.js";
+import { noopReranker, createRerankerFromEnv } from "./rerank/index.js";
 import type {
   KnowledgeChunk,
   KnowledgeManifest,
@@ -79,6 +81,10 @@ export interface VectorKnowledgeStoreConfig {
   sourceDir?: string;
   /** Obsidian vault path for multimodal embedding */
   vaultPath?: string;
+  /** Reranker for improving search relevance (default: from env or noop) */
+  reranker?: Reranker;
+  /** Enable reranking (default: from RERANK_ENABLED env var) */
+  enableRerank?: boolean;
 }
 
 /**
@@ -91,6 +97,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   private readonly dbPath: string;
   private readonly sourceDir: string;
   private readonly vaultPath?: string;
+  private readonly reranker: Reranker;
   private db: lancedb.Connection | null = null;
   private table: lancedb.Table | null = null;
   private manifest: KnowledgeManifest | null = null;
@@ -102,6 +109,15 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     this.dbPath = config?.dbPath ?? ".smart-assistant/vectors";
     this.sourceDir = config?.sourceDir ?? resolveKnowledgeSourceDir();
     this.vaultPath = config?.vaultPath;
+
+    // Initialize reranker from config or environment
+    if (config?.reranker) {
+      this.reranker = config.reranker;
+    } else if (config?.enableRerank ?? process.env.RERANK_ENABLED === "true") {
+      this.reranker = createRerankerFromEnv();
+    } else {
+      this.reranker = noopReranker;
+    }
   }
 
   /**
@@ -501,18 +517,21 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     await this.ensureBM25Index();
     const bm25Results: BM25Match[] = this.bm25!.search(query, 20);
 
-    // RRF fusion
-    const fused = rrfFusion(vectorMatches, bm25Results, { topN: limit });
+    // RRF fusion - get top 20 candidates for reranking
+    const candidates = rrfFusion(vectorMatches, bm25Results, { topN: 20 });
 
-    // Map fused results to KnowledgeMatch[]
-    // We need to re-fetch full chunk data for the fused results
+    // Rerank candidates to get final results
+    const reranked = await this.reranker.rerank(query, candidates, { topN: limit });
+
+    // Map reranked results to KnowledgeMatch[]
+    // We need to re-fetch full chunk data for the reranked results
     const matches: KnowledgeMatch[] = [];
 
-    for (const fusedResult of fused) {
+    for (const rerankedResult of reranked) {
       // Find full chunk data from vector results first
       const vectorRecord = vectorResults.find((row) => {
         const r = row as { id?: string };
-        return r.id === fusedResult.chunkId;
+        return r.id === rerankedResult.chunkId;
       }) as {
         id?: string;
         text?: string;
@@ -525,11 +544,11 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       } | undefined;
 
       const chunk: KnowledgeChunk = {
-        id: fusedResult.chunkId,
+        id: rerankedResult.chunkId,
         sourcePath: vectorRecord?.sourcePath ?? "",
         headingText: vectorRecord?.headingText ?? "",
         headingLevel: vectorRecord?.headingLevel ?? 0,
-        text: fusedResult.text,
+        text: rerankedResult.text,
         startLine: 0,
         endLine: 0,
         tags: vectorRecord ? arrowToStringArray(vectorRecord.tags) : [],
@@ -538,8 +557,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
       matches.push({
         chunk,
-        relevanceScore: fusedResult.rrfScore,
-        matchReason: "hybrid (vector + BM25)",
+        relevanceScore: rerankedResult.relevanceScore,
+        matchReason: this.reranker.name === "noop"
+          ? "hybrid (vector + BM25)"
+          : `hybrid (vector + BM25) + rerank (${this.reranker.name})`,
       });
     }
 

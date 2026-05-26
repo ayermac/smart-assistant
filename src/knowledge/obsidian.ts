@@ -8,7 +8,7 @@
  * - Note path resolution
  */
 
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { stat } from "node:fs/promises";
 import type { ImageReference } from "./types.js";
 
@@ -49,14 +49,21 @@ export function parseWikiLinks(content: string): string[] {
  * - ![alt text](path/to/image.png)
  * - ![](attachments/image.jpg)
  *
+ * Path resolution:
+ * - Absolute paths (/path/to/image.png) - used as-is
+ * - Relative to note (./image.png, ../image.png) - resolved relative to source file's directory
+ * - Other relative paths (image.png, attachments/image.png) - resolved relative to vault root
+ *
  * @param content - Markdown content
  * @param vaultPath - Obsidian vault root path
+ * @param sourceFilePath - Optional path to the source Markdown file for relative path resolution
  * @returns Array of ImageReference objects
  */
-export function parseImages(content: string, vaultPath: string): ImageReference[] {
+export function parseImages(content: string, vaultPath: string, sourceFilePath?: string): ImageReference[] {
   if (!content || !vaultPath) return [];
 
   const images: ImageReference[] = [];
+  const sourceDir = sourceFilePath ? dirname(sourceFilePath) : null;
 
   // Match ![alt](path) - standard Markdown image
   const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -71,11 +78,28 @@ export function parseImages(content: string, vaultPath: string): ImageReference[
       continue;
     }
 
-    // Resolve absolute path
-    // Handle paths that might already be absolute or relative
-    const absolutePath = relativePath.startsWith("/")
-      ? relativePath
-      : join(vaultPath, relativePath);
+    // Resolve absolute path with proper precedence:
+    // 1. Already absolute path - use as-is
+    // 2. Relative to note (./ or ../) - resolve relative to source file's directory
+    // 3. Other relative paths - resolve relative to vault root (Obsidian convention)
+    let absolutePath: string;
+
+    if (relativePath.startsWith("/")) {
+      // Already absolute
+      absolutePath = relativePath;
+    } else if (relativePath.startsWith("./") || relativePath.startsWith("../")) {
+      // Explicitly relative to note's directory
+      if (sourceDir) {
+        absolutePath = join(sourceDir, relativePath);
+      } else {
+        // Fallback to vault root if no source file path
+        absolutePath = join(vaultPath, relativePath);
+      }
+    } else {
+      // Obsidian convention: relative paths are relative to vault root
+      // This handles cases like "attachments/image.png" or "Pasted image.png"
+      absolutePath = join(vaultPath, relativePath);
+    }
 
     images.push({
       path: absolutePath,

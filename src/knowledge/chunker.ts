@@ -29,6 +29,8 @@ export interface ChunkOptions {
   overlap?: number;
   /** Obsidian vault path for parsing wiki links and images */
   vaultPath?: string;
+  /** Absolute path to the source file being chunked (for relative image path resolution) */
+  sourceFilePath?: string;
 }
 
 /**
@@ -48,11 +50,12 @@ function buildChunk(
   headingText: string,
   text: string,
   createdAt: string,
-  vaultPath?: string
+  vaultPath?: string,
+  sourceFilePath?: string
 ): KnowledgeChunk {
   // Parse Obsidian features if vaultPath is provided
   const linkedNotes = vaultPath ? parseWikiLinks(text) : undefined;
-  const images = vaultPath ? parseImages(text, vaultPath) : undefined;
+  const images = vaultPath ? parseImages(text, vaultPath, sourceFilePath) : undefined;
   const parsedTags = vaultPath ? parseTags(text) : undefined;
 
   return {
@@ -102,14 +105,15 @@ export function chunkFile(
   const maxChunkSize = options?.maxChunkSize ?? 800;
   const overlap = options?.overlap ?? 80;
   const vaultPath = options?.vaultPath;
+  const sourceFilePath = options?.sourceFilePath;
 
   // Plain text files: paragraph-based chunking
   if (ext === ".txt") {
-    return chunkTextByParagraph(filePath, content, now, maxChunkSize, overlap, vaultPath);
+    return chunkTextByParagraph(filePath, content, now, maxChunkSize, overlap, vaultPath, sourceFilePath);
   }
 
   // Markdown files: three-layer chunking
-  return chunkMarkdown(filePath, content, now, maxChunkSize, overlap, vaultPath);
+  return chunkMarkdown(filePath, content, now, maxChunkSize, overlap, vaultPath, sourceFilePath);
 }
 
 /**
@@ -125,7 +129,8 @@ function chunkMarkdown(
   createdAt: string,
   maxChunkSize: number,
   overlap: number,
-  vaultPath?: string
+  vaultPath?: string,
+  sourceFilePath?: string
 ): KnowledgeChunk[] {
   const lines = content.split("\n");
   const headingRegex = /^(#{1,6})\s+(.+)$/;
@@ -237,7 +242,8 @@ function chunkMarkdown(
         subChunk.headingText,
         chunkText,
         createdAt,
-        vaultPath
+        vaultPath,
+        sourceFilePath
       ));
       previousChunkText = subChunk.text;
     }
@@ -257,7 +263,8 @@ function chunkTextByParagraph(
   createdAt: string,
   maxChunkSize: number,
   overlap: number,
-  vaultPath?: string
+  vaultPath?: string,
+  sourceFilePath?: string
 ): KnowledgeChunk[] {
   const paragraphs = content.split(/\n\n+/);
   const chunks: KnowledgeChunk[] = [];
@@ -288,7 +295,8 @@ function chunkTextByParagraph(
         "",
         chunkText,
         createdAt,
-        vaultPath
+        vaultPath,
+        sourceFilePath
       ));
 
       previousChunkText = buffer.trim();
@@ -315,7 +323,8 @@ function chunkTextByParagraph(
       "",
       chunkText,
       createdAt,
-      vaultPath
+      vaultPath,
+      sourceFilePath
     ));
   }
 
@@ -343,7 +352,8 @@ function chunkTextByParagraph(
         "",
         chunkText,
         createdAt,
-        vaultPath
+        vaultPath,
+        sourceFilePath
       ));
 
       previousText = text.slice(offset, end);

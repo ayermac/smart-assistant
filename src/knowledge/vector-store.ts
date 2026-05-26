@@ -342,6 +342,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           maxChunkSize: 800,
           overlap: 80,
           vaultPath: this.vaultPath,
+          sourceFilePath: sourceFile.absolutePath,
         });
 
         // Generate embeddings and store in LanceDB
@@ -714,6 +715,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   async indexFile(filePath: string): Promise<void> {
     const table = this.ensureTable();
 
+    // Debug: Log vaultPath configuration
+    console.log(`[indexFile] Processing: ${filePath}`);
+    console.log(`[indexFile] vaultPath configured: ${this.vaultPath ?? "NOT SET"}`);
+
     // Check schema for optional fields
     let schemaHasLastModified = false;
     let schemaHasLinkedNotes = false;
@@ -728,6 +733,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     } catch {
       // Schema check failed, assume base schema only
     }
+
+    // Debug: Log schema capabilities
+    console.log(`[indexFile] Schema has imageVector: ${schemaHasImageVector}`);
 
     try {
       const content = await readFile(filePath, "utf8");
@@ -748,7 +756,18 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         maxChunkSize: 800,
         overlap: 80,
         vaultPath: this.vaultPath,
+        sourceFilePath: filePath,
       });
+
+      // Debug: Log chunk image detection
+      const chunksWithImages = chunks.filter(c => c.images && c.images.length > 0);
+      console.log(`[indexFile] Total chunks: ${chunks.length}, chunks with images: ${chunksWithImages.length}`);
+      for (const chunk of chunksWithImages) {
+        console.log(`[indexFile] Chunk ${chunk.id} has ${chunk.images!.length} image(s):`);
+        for (const img of chunk.images!) {
+          console.log(`[indexFile]   - ${img.relativePath} -> ${img.path}`);
+        }
+      }
 
       // Get file modification time (only used if schema supports it)
       let lastModified: number | undefined;
@@ -793,16 +812,25 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
           // Generate image vector for chunks with images if vaultPath is configured
           let imageVector: number[] | undefined;
-          if (this.vaultPath && chunk.images && chunk.images.length > 0 && schemaHasImageVector) {
+          const willGenerateImageVector = this.vaultPath && chunk.images && chunk.images.length > 0 && schemaHasImageVector;
+          console.log(`[indexFile] Chunk ${chunk.id}: willGenerateImageVector=${willGenerateImageVector}, vaultPath=${!!this.vaultPath}, hasImages=${!!(chunk.images?.length)}, schemaHasImageVector=${schemaHasImageVector}`);
+
+          if (willGenerateImageVector) {
             try {
-              const image = chunk.images[0];
+              const image = chunk.images![0];
+              console.log(`[indexFile] Attempting to load image: ${image.path}`);
               const base64Image = await imageToBase64(image.path);
+              console.log(`[indexFile] Base64 image length: ${base64Image.length}`);
               if (base64Image) {
                 await delay(EMBED_DELAY_MS); // Delay before multimodal embedding
+                console.log(`[indexFile] Calling getMultimodalEmbedding...`);
                 imageVector = await getMultimodalEmbedding(
                   { text: chunk.text, image: base64Image },
                   this.embeddingConfig
                 );
+                console.log(`[indexFile] Image vector generated successfully, length: ${imageVector.length}`);
+              } else {
+                console.warn(`[indexFile] imageToBase64 returned empty string for ${image.path}`);
               }
             } catch (error) {
               console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);

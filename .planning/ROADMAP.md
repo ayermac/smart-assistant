@@ -23,6 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: RAG Pipeline Upgrade** - Upgrade RAG to production-grade hybrid retrieval: text cleaning, three-layer chunking, BM25, RRF fusion. (completed 2026-05-23)
 
 - [x] **Phase 10: Obsidian Multimodal RAG** - Integrate Obsidian vault with multimodal support: wiki-links, images, and file watching.
+- [x] **Phase 11: LangChain RAG Upgrade** - Hybrid optimization: fix image retrieval, add PDF/docx support, integrate LangChain Rerank. (completed 2026-05-26)
 
 ## Phase Details
 
@@ -200,10 +201,28 @@ Plans:
 - [x] 10-01: Implement Obsidian parser and multimodal embedding.
 - [x] 10-02: Implement file watcher and incremental indexing.
 
+### Phase 11: LangChain RAG Upgrade
+**Goal**: Hybrid optimization of RAG system: fix image retrieval bug, add PDF/docx document support via LangChain loaders, integrate LangChain Rerank for improved relevance.
+**Depends on**: Phase 10
+**Requirements**: [LC-01, LC-02, LC-03, LC-04]
+**Success Criteria** (what must be TRUE):
+  1. Image search returns relevant chunks with imageVector populated.
+  2. PDF files can be indexed and retrieved via semantic search.
+  3. docx files can be indexed and retrieved via semantic search.
+  4. Rerank improves top-k relevance (manual test validation).
+  5. Existing Markdown/text retrieval unchanged (backward compatible).
+  6. New test cases cover image retrieval and document loaders.
+**Plans**: See 11-PLAN.md
+
+Plans:
+- [ ] 11-01: Fix imageVector storage bug in multimodal embedding.
+- [ ] 11-02: Add LangChain document loaders (PDF, docx).
+- [ ] 11-03: Integrate LangChain Rerank for result optimization.
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -217,3 +236,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 8. Knowledge RAG Vector Search | 2/2 | Complete | 2026-05-23 |
 | 9. RAG Pipeline Upgrade | 2/2 | Complete | 2026-05-23 |
 | 10. Obsidian Multimodal RAG | 2/2 | Complete | 2026-05-24 |
+| 11. LangChain RAG Upgrade | 3/3 | Complete | 2026-05-26 |

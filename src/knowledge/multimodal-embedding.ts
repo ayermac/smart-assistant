@@ -128,35 +128,68 @@ export async function getMultimodalEmbedding(
  *
  * @param imagePath - Absolute path to the image file
  * @returns Base64 data URL (e.g., "data:image/png;base64,...") or empty string if skipped
- * @throws Error if file doesn't exist or is not a supported format
+ * @throws Error with detailed message if file doesn't exist or is not a supported format
  */
 export async function imageToBase64(imagePath: string): Promise<string> {
   if (!imagePath) {
-    throw new Error("Image path is required");
+    throw new Error("[imageToBase64] Image path is required but was empty");
   }
 
   // Check file extension
   const ext = extname(imagePath).toLowerCase();
   if (!SUPPORTED_IMAGE_EXTENSIONS.includes(ext)) {
-    throw new Error(`Unsupported image format: ${ext}. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`);
+    throw new Error(
+      `[imageToBase64] Unsupported image format '${ext}' for path: ${imagePath}. ` +
+      `Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`
+    );
   }
 
   // Check file exists and size
   let fileStat;
   try {
     fileStat = await stat(imagePath);
-  } catch {
-    throw new Error(`Image file not found: ${imagePath}`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `[imageToBase64] Image file not found: ${imagePath}. ` +
+      `Make sure the path is correct and the file exists. ` +
+      `Original error: ${errorMsg}`
+    );
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(
+      `[imageToBase64] Path exists but is not a file: ${imagePath}`
+    );
+  }
+
+  if (fileStat.size === 0) {
+    throw new Error(
+      `[imageToBase64] Image file is empty (0 bytes): ${imagePath}`
+    );
   }
 
   if (fileStat.size > MAX_IMAGE_SIZE) {
-    // Skip large images silently (return empty string)
-    console.warn(`Image too large (${fileStat.size} bytes), skipping: ${imagePath}`);
+    // Skip large images with detailed warning
+    console.warn(
+      `[imageToBase64] Image too large (${(fileStat.size / 1024 / 1024).toFixed(2)} MB > ` +
+      `${MAX_IMAGE_SIZE / 1024 / 1024} MB limit), skipping: ${imagePath}`
+    );
     return "";
   }
 
   // Read file and convert to base64
-  const buffer = await readFile(imagePath);
+  let buffer: Buffer;
+  try {
+    buffer = await readFile(imagePath);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `[imageToBase64] Failed to read image file: ${imagePath}. ` +
+      `Original error: ${errorMsg}`
+    );
+  }
+
   const base64 = buffer.toString("base64");
 
   // Determine MIME type

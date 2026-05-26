@@ -14,7 +14,9 @@
 |---------|-------------|
 | 🧠 **Long-term Memory** | Semantic vector search with LanceDB + Doubao embeddings |
 | 📚 **Knowledge RAG** | Hybrid retrieval: vector + BM25 + RRF fusion, multimodal support |
+| 📄 **Multi-format Support** | Markdown, text, PDF, DOCX document parsing |
 | 🔗 **Obsidian Integration** | Real-time sync, wiki-links parsing, image embedding |
+| 🎯 **Smart Reranking** | Optional Rerank for improved relevance (Cohere API) |
 | 📋 **Task Planning** | Break down complex tasks into trackable steps |
 | 💬 **Session Persistence** | Resume conversations across sessions |
 | 🔒 **Local-First** | All data stored locally, no cloud required |
@@ -46,6 +48,11 @@ OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
 # Embeddings (for Memory and Knowledge RAG)
 EMBEDDING_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
 EMBEDDING_MODEL=doubao-embedding-vision
+
+# Optional: Rerank for improved retrieval
+RERANK_ENABLED=false
+RERANK_PROVIDER=cohere
+COHERE_API_KEY=your-cohere-api-key
 ```
 
 ### 3. Run
@@ -81,6 +88,9 @@ assistant> 根据我存储的记忆，你的名字是小C。
 | `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | Knowledge source directory | `.smart-assistant/knowledge-sources` |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault path (optional) | *not set* |
+| `RERANK_ENABLED` | Enable Rerank re-ranking | `false` |
+| `RERANK_PROVIDER` | Rerank provider (`cohere` or `noop`) | `cohere` |
+| `COHERE_API_KEY` | Cohere API key (required for Rerank) | *not set* |
 
 ---
 
@@ -88,11 +98,13 @@ assistant> 根据我存储的记忆，你的名字是小C。
 
 ### Setup
 
-Put your Markdown or text files in the knowledge directory:
+Put your documents in the knowledge directory:
 
 ```bash
 mkdir -p knowledge-sources
 cp ~/notes/*.md knowledge-sources/
+cp ~/documents/*.pdf knowledge-sources/
+cp ~/reports/*.docx knowledge-sources/
 ```
 
 ### Build Index
@@ -110,9 +122,9 @@ you> 搜索一下关于API设计的笔记
 assistant> According to `api-design.md > RESTful原则`，你的笔记中提到...
 ```
 
-### Hybrid Retrieval (v2.2)
+### Hybrid Retrieval (v2.3)
 
-Knowledge RAG uses **hybrid retrieval** with **multimodal support**:
+Knowledge RAG uses **hybrid retrieval** with **multimodal support** and **multi-format** documents:
 
 | Method | Strength | Example |
 |--------|----------|---------|
@@ -120,16 +132,27 @@ Knowledge RAG uses **hybrid retrieval** with **multimodal support**:
 | **BM25** | Exact keyword matching | "LLMRouter" → exact matches |
 | **RRF Fusion** | Combines both methods | Chunks in both lists rank higher |
 | **Multimodal Embedding** | Text + Image fusion | Query matches images in notes |
+| **Rerank** | Semantic re-ranking | Uses Cohere API to improve Top-K relevance |
 
 **Search Pipeline:**
 ```
-query → vector search (top 20) + BM25 search (top 20) → RRF fusion → top N
+query → vector search + BM25 → RRF fusion → [Rerank] → top N results
 ```
 
 **Multimodal Support:**
 - Images in Markdown (`![](image.png)`) are embedded using `doubao-embedding-vision`
 - Text + Image fusion enables searching by image content
 - Requires `OBSIDIAN_VAULT_PATH` or images in knowledge directory
+
+### Supported File Formats
+
+| Format | Extensions | Parser |
+|--------|------------|--------|
+| Markdown | `.md`, `.markdown` | Built-in parser |
+| Text | `.txt` | Built-in parser |
+| PDF | `.pdf` | LangChain PDFLoader (pdf-parse) |
+| Word | `.docx` | LangChain DocxLoader (mammoth) |
+| Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | Multimodal embedding |
 
 ### Text Processing
 
@@ -138,7 +161,26 @@ query → vector search (top 20) + BM25 search (top 20) → RRF fusion → top N
 - **Overlap**: 80-char overlap between adjacent chunks for context continuity
 - **Max Chunk Size**: 800 characters (configurable)
 
-Supported file types: `.md`, `.txt`, `.markdown`
+### Rerank Configuration
+
+Enable Rerank to improve retrieval relevance:
+
+```bash
+# In .env
+RERANK_ENABLED=true
+RERANK_PROVIDER=cohere
+COHERE_API_KEY=your-cohere-api-key
+```
+
+**How it works:**
+1. Hybrid retrieval returns candidate results (e.g., Top 20)
+2. Rerank model computes precise relevance scores for each candidate
+3. Results are re-ordered by relevance, returning Top N
+
+**Benefits:**
+- Improves retrieval precision for long queries
+- Better matches semantically similar but keyword-different content
+- Requires additional API call (Cohere Rerank API)
 
 ---
 
@@ -194,6 +236,8 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 | Agent Core | `pi-agent-core` + `pi-ai` |
 | Vector DB | LanceDB (embedded, no server) |
 | Embeddings | Doubao embedding (2048-dim) |
+| Document Parsing | LangChain loaders (PDF, DOCX) |
+| Re-ranking | Cohere Rerank API |
 | Storage | Apache Arrow |
 
 ### Project Structure
@@ -205,6 +249,9 @@ smart-assistant/
 │   ├── assistant/          # Agent controller
 │   ├── memory/             # Long-term memory (LanceDB)
 │   ├── knowledge/          # Knowledge RAG (LanceDB)
+│   │   ├── loaders/        # Document loaders (PDF, DOCX)
+│   │   ├── rerank/         # Re-ranking module
+│   │   └── obsidian.ts     # Obsidian parser
 │   ├── planning/           # Task planning tools
 │   ├── session/            # Session persistence
 │   └── tools/              # Tool implementations
@@ -220,14 +267,30 @@ smart-assistant/
 ```
 .smart-assistant/vectors/   # LanceDB database
 ├── memories table          # Long-term memory vectors
-└── knowledge table         # Knowledge chunk vectors
+└── knowledge table         # Knowledge chunk vectors (with imageVector)
+```
+
+### Knowledge Chunk Schema
+
+```typescript
+interface KnowledgeChunk {
+  id: string;              // Unique identifier
+  text: string;            // Text content
+  vector: number[];        // Text embedding vector (2048-dim)
+  imageVector?: number[];  // Image embedding vector (2048-dim, optional)
+  sourcePath: string;      // Source file path
+  heading?: string;        // Parent heading
+  tags: string[];          // Tags
+  linkedNotes?: string[];  // Linked notes (Obsidian)
+  createdAt: Date;         // Creation timestamp
+}
 ```
 
 ---
 
 ## 📊 Evaluation
 
-v2.2 passes all acceptance criteria:
+v2.3 passes all acceptance criteria:
 
 | Case | Description | Status |
 |------|-------------|--------|
@@ -255,17 +318,48 @@ npm run dev        # Development mode (hot reload)
 npm run build      # Production build
 npm run typecheck  # Type checking
 npm run eval       # Run evaluations
+npm run test       # Run tests
 ```
 
 ---
 
 ## ⚠️ Limitations
 
-- RAG supports Markdown/text files and images (no PDF, docx, web crawling)
+- PDF/DOCX documents require installing dependencies (`pdf-parse`, `mammoth`)
 - Images require `doubao-embedding-vision` or compatible multimodal embedding model
 - No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)
 - CLI-only interface (Web UI planned for v3)
+
+---
+
+## 📝 Changelog
+
+### v2.3 (2026-05-26)
+
+**New Features:**
+- 📄 PDF document support (via LangChain PDFLoader)
+- 📄 DOCX document support (via LangChain DocxLoader)
+- 🎯 Optional Rerank re-ranking (Cohere API)
+- 🖼️ Fixed image embedding retrieval bug
+
+**Improvements:**
+- Optimized hybrid retrieval pipeline with Rerank post-processing
+- Extended file format support table
+- Updated knowledge chunk schema with `imageVector` field
+
+### v2.2 (2026-05-23)
+
+- Hybrid retrieval: vector + BM25 + RRF fusion
+- Obsidian integration: real-time sync, wiki-links, image embedding
+- Three-layer chunking strategy: heading → paragraph → hard break
+
+### v2.0 (2026-05-22)
+
+- Vector search (LanceDB + Doubao embeddings)
+- Long-term memory tools
+- Knowledge RAG tools
+- Task planning tools
 
 ---
 
@@ -280,3 +374,5 @@ MIT © 2024
 - [pi-agent-core](https://github.com/earendil-works/pi-agent-core) - Agent runtime
 - [LanceDB](https://lancedb.com/) - Embedded vector database
 - [Apache Arrow](https://arrow.apache.org/) - Columnar data format
+- [LangChain](https://js.langchain.com/) - Document loaders
+- [Cohere](https://cohere.com/) - Rerank API

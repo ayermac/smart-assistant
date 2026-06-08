@@ -5,14 +5,18 @@
  */
 
 import { VectorKnowledgeStore } from "../src/knowledge/index.js";
+import { resolveDataPaths, resolveKnowledgeSourceDir } from "../src/config.js";
 
 async function main() {
   console.log("=== 混合检索测试 ===\n");
 
+  const dataPaths = resolveDataPaths();
+  const sourceDir = resolveKnowledgeSourceDir();
+
   // 创建知识库存储
   const store = new VectorKnowledgeStore({
-    dbPath: ".smart-assistant/test-vectors",
-    sourceDir: "knowledge-sources",
+    dbPath: dataPaths.vectors,
+    sourceDir,
   });
 
   // 初始化

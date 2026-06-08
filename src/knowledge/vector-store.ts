@@ -6,16 +6,15 @@
  */
 
 import * as lancedb from "@lancedb/lancedb";
-import { type Vector, Field, FixedSizeList, Float32, Int32, List, Schema, Utf8 } from "apache-arrow";
-import { randomUUID } from "node:crypto";
+import { type Vector, Field, FixedSizeList, Float32, Float64, Int32, List, Schema, Utf8 } from "apache-arrow";
 import { mkdir, readdir, stat, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { resolveKnowledgeSourceDir } from "../config.js";
+import { resolveDataPaths, resolveKnowledgeSourceDir } from "../config.js";
 import { getEmbedding, createDefaultEmbeddingConfig, type EmbeddingConfig } from "../memory/embedding.js";
 import { chunkFile, chunkBinaryFile, isSupportedExtension, isBinaryFormat } from "./chunker.js";
 import { cleanText, extractFrontmatter } from "./cleaner.js";
 import { BM25Retriever, type BM25Match } from "./bm25.js";
-import { rrfFusion, type VectorMatch, type FusedResult } from "./fusion.js";
+import { rrfFusion, type VectorMatch } from "./fusion.js";
 import { getMultimodalEmbedding, imageToBase64 } from "./multimodal-embedding.js";
 import type { Reranker } from "./rerank/index.js";
 import { noopReranker, createRerankerFromEnv } from "./rerank/index.js";
@@ -27,7 +26,6 @@ import type {
   ChunkMetadata,
   SourceMetadata,
   SearchOptions,
-  ImageReference,
 } from "./types.js";
 
 /**
@@ -47,6 +45,10 @@ const RETRY_BASE_DELAY_MS = 1000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function escapeSqlString(value: string): string {
+  return value.replace(/'/g, "''");
 }
 
 /**
@@ -106,7 +108,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
   constructor(config?: VectorKnowledgeStoreConfig) {
     this.embeddingConfig = config?.embeddingConfig ?? createDefaultEmbeddingConfig();
-    this.dbPath = config?.dbPath ?? ".smart-assistant/vectors";
+    this.dbPath = config?.dbPath ?? resolveDataPaths().vectors;
     this.sourceDir = config?.sourceDir ?? resolveKnowledgeSourceDir();
     this.vaultPath = config?.vaultPath;
 
@@ -148,7 +150,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         new Field("tags", new List(new Field("item", new Utf8()))),
         new Field("createdAt", new Utf8(), false),
         // New columns for Phase 10 (optional)
-        new Field("lastModified", new Int32(), true), // file mtime, nullable
+        new Field("lastModified", new Float64(), true), // file mtime, nullable
         new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
         new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
       ]);
@@ -200,7 +202,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           new Field("tags", new List(new Field("item", new Utf8()))),
           new Field("createdAt", new Utf8(), false),
           // New columns for Phase 10 (optional)
-          new Field("lastModified", new Int32(), true), // file mtime, nullable
+          new Field("lastModified", new Float64(), true), // file mtime, nullable
           new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
           new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
         ]);
@@ -240,6 +242,28 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       throw new Error("VectorKnowledgeStore not initialized. Call init() first.");
     }
     return this.table;
+  }
+
+  private async getIndexedSourcePaths(): Promise<string[]> {
+    const table = this.ensureTable();
+    const rows = await table.query()
+      .select(["sourcePath"])
+      .toArray();
+
+    const paths = new Set<string>();
+    for (const row of rows) {
+      const record = row as { sourcePath?: string };
+      if (record.sourcePath) {
+        paths.add(record.sourcePath);
+      }
+    }
+
+    return Array.from(paths);
+  }
+
+  private async deleteSourcePath(sourcePath: string): Promise<void> {
+    const table = this.ensureTable();
+    await table.delete(`sourcePath = '${escapeSqlString(sourcePath)}'`);
   }
 
   /**
@@ -336,108 +360,33 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Ingest files from the knowledge source directory.
    */
   async ingest(): Promise<KnowledgeManifest> {
-    const table = this.ensureTable();
     const sourceFiles = await this.scanSourceFiles();
 
-    const allChunks: ChunkMetadata[] = [];
-    const sources: SourceMetadata[] = [];
+    const indexedPaths = await this.getIndexedSourcePaths();
+    for (const sourcePath of indexedPaths) {
+      try {
+        await this.deleteSourcePath(sourcePath);
+      } catch (error) {
+        console.warn(`Failed to remove existing chunks for ${sourcePath}: ${error}`);
+      }
+    }
 
     for (const sourceFile of sourceFiles) {
       try {
-        const content = await readFile(sourceFile.absolutePath, "utf8");
-
-        // Apply text cleaning before chunking
-        const cleaned = cleanText(content);
-
-        // Extract frontmatter if present (for metadata enrichment)
-        const { body } = extractFrontmatter(cleaned);
-
-        // Chunk with three-layer strategy and overlap
-        // Pass vaultPath for Obsidian parsing if configured
-        const chunks = chunkFile(sourceFile.path, body, {
-          maxChunkSize: 800,
-          overlap: 80,
-          vaultPath: this.vaultPath,
-          sourceFilePath: sourceFile.absolutePath,
-        });
-
-        // Generate embeddings and store in LanceDB
-        for (const chunk of chunks) {
-          try {
-            const vector = await getEmbedding(chunk.text, this.embeddingConfig);
-
-            // Generate image vector for chunks with images if vaultPath is configured
-            let imageVector: number[] | undefined;
-            if (this.vaultPath && chunk.images && chunk.images.length > 0) {
-              try {
-                // Use the first image for multimodal embedding
-                const image = chunk.images[0];
-                const base64Image = await imageToBase64(image.path);
-                if (base64Image) {
-                  imageVector = await getMultimodalEmbedding(
-                    { text: chunk.text, image: base64Image },
-                    this.embeddingConfig
-                  );
-                }
-              } catch (error) {
-                // Log warning but continue with text-only embedding
-                console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);
-              }
-            }
-
-            const record = {
-              id: chunk.id,
-              vector,
-              text: chunk.text,
-              sourcePath: chunk.sourcePath,
-              headingText: chunk.headingText,
-              headingLevel: chunk.headingLevel,
-              tags: chunk.tags,
-              createdAt: chunk.createdAt,
-              // Store image vector if available
-              ...(imageVector ? { imageVector } : {}),
-            };
-
-            await table.add([record]);
-
-            allChunks.push({
-              id: chunk.id,
-              sourcePath: chunk.sourcePath,
-              headingText: chunk.headingText,
-              headingLevel: chunk.headingLevel,
-              tags: chunk.tags,
-              lineCount: chunk.endLine - chunk.startLine + 1,
-              charCount: chunk.text.length,
-              modifiedAt: chunk.createdAt,
-              // Add linkedNotes if present
-              ...(chunk.linkedNotes ? { linkedNotes: chunk.linkedNotes } : {}),
-            });
-          } catch (error) {
-            // Log warning and skip chunks that fail to embed
-            console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
-          }
-        }
-
-        sources.push({
-          ...sourceFile,
-          chunkCount: chunks.length,
-        });
+        await this.indexFile(sourceFile.absolutePath);
       } catch (error) {
-        // Log warning and skip files that fail to read
         console.warn(`Failed to ingest ${sourceFile.path}: ${error}`);
       }
     }
 
-    // Build manifest
-    const manifest: KnowledgeManifest = {
-      version: 1,
+    this.manifest = null;
+    const manifest = await this.getManifest() ?? {
+      version: 1 as const,
       lastIndexed: new Date().toISOString(),
       sourceDir: this.sourceDir,
-      chunks: allChunks,
-      sources,
+      chunks: [],
+      sources: [],
     };
-
-    this.manifest = manifest;
 
     // Mark BM25 index for rebuild
     this.bm25NeedsRebuild = true;
@@ -471,7 +420,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     // Add sourcePath filter if provided
     if (options?.sourcePath) {
-      vectorSearchQuery = vectorSearchQuery.where(`sourcePath LIKE '%${options.sourcePath}%'`) as typeof vectorSearchQuery;
+      vectorSearchQuery = vectorSearchQuery.where(`sourcePath LIKE '%${escapeSqlString(options.sourcePath)}%'`) as typeof vectorSearchQuery;
     }
 
     const vectorResults = await vectorSearchQuery
@@ -579,7 +528,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const table = this.ensureTable();
     try {
       const results = await table.query()
-        .select(["id", "sourcePath", "headingText", "headingLevel", "tags", "text", "createdAt"])
+        .select(["id", "sourcePath", "headingText", "headingLevel", "tags", "text", "createdAt", "lastModified"])
         .toArray();
 
       if (results.length === 0) {
@@ -598,6 +547,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           tags?: unknown;
           text?: string;
           createdAt?: string;
+          lastModified?: number;
         };
 
         if (record.id && record.text && record.sourcePath) {
@@ -614,14 +564,18 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
           // Track unique sources
           if (!sourceMap.has(record.sourcePath)) {
+            const basePath = this.vaultPath ?? this.sourceDir;
             sourceMap.set(record.sourcePath, {
               path: record.sourcePath,
-              absolutePath: join(this.sourceDir, record.sourcePath),
-              mtime: 0,
+              absolutePath: join(basePath, record.sourcePath),
+              mtime: record.lastModified ?? 0,
               chunkCount: 0,
             });
           }
           const source = sourceMap.get(record.sourcePath)!;
+          if (record.lastModified && record.lastModified > source.mtime) {
+            source.mtime = record.lastModified;
+          }
           source.chunkCount++;
         }
       }
@@ -686,7 +640,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     try {
       const results = await table.query()
-        .where(`id = '${id}'`)
+        .where(`id = '${escapeSqlString(id)}'`)
         .select(["id", "text", "sourcePath", "headingText", "headingLevel", "tags", "createdAt"])
         .limit(1)
         .toArray();
@@ -736,10 +690,6 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   async indexFile(filePath: string): Promise<void> {
     const table = this.ensureTable();
 
-    // Debug: Log vaultPath configuration
-    console.log(`[indexFile] Processing: ${filePath}`);
-    console.log(`[indexFile] vaultPath configured: ${this.vaultPath ?? "NOT SET"}`);
-
     // Check schema for optional fields
     let schemaHasLastModified = false;
     let schemaHasLinkedNotes = false;
@@ -755,27 +705,28 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       // Schema check failed, assume base schema only
     }
 
-    // Debug: Log schema capabilities
-    console.log(`[indexFile] Schema has imageVector: ${schemaHasImageVector}`);
-
     try {
       // Get relative path for storage
       // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
       const basePath = this.vaultPath ?? this.sourceDir;
       const relativePath = relative(basePath, filePath);
+      await this.deleteSourcePath(relativePath);
 
       // Determine how to chunk based on file type
       let chunks: KnowledgeChunk[];
 
       if (isBinaryFormat(filePath)) {
         // Binary format (PDF, DOCX) - use document loader
-        console.log(`[indexFile] Loading binary document: ${filePath}`);
-        chunks = await chunkBinaryFile(relativePath, {
+        const loadedChunks = await chunkBinaryFile(filePath, {
           maxChunkSize: 800,
           overlap: 80,
           vaultPath: this.vaultPath,
           sourceFilePath: filePath,
         });
+        chunks = loadedChunks.map((chunk) => ({
+          ...chunk,
+          sourcePath: relativePath,
+        }));
       } else {
         // Text format (Markdown, TXT) - read and chunk directly
         const content = await readFile(filePath, "utf8");
@@ -795,15 +746,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         });
       }
 
-      // Debug: Log chunk image detection
       const chunksWithImages = chunks.filter(c => c.images && c.images.length > 0);
-      console.log(`[indexFile] Total chunks: ${chunks.length}, chunks with images: ${chunksWithImages.length}`);
-      for (const chunk of chunksWithImages) {
-        console.log(`[indexFile] Chunk ${chunk.id} has ${chunk.images!.length} image(s):`);
-        for (const img of chunk.images!) {
-          console.log(`[indexFile]   - ${img.relativePath} -> ${img.path}`);
-        }
-      }
 
       // Get file modification time (only used if schema supports it)
       let lastModified: number | undefined;
@@ -852,24 +795,18 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           // Generate image vector for chunks with images if vaultPath is configured
           let imageVector: number[] | undefined;
           const willGenerateImageVector = this.vaultPath && chunk.images && chunk.images.length > 0 && schemaHasImageVector;
-          console.log(`[indexFile] Chunk ${chunk.id}: willGenerateImageVector=${willGenerateImageVector}, vaultPath=${!!this.vaultPath}, hasImages=${!!(chunk.images?.length)}, schemaHasImageVector=${schemaHasImageVector}`);
 
           if (willGenerateImageVector) {
             try {
               const image = chunk.images![0];
-              console.log(`[indexFile] Attempting to load image: ${image.path}`);
               const base64Image = await imageToBase64(image.path);
-              console.log(`[indexFile] Base64 image length: ${base64Image.length}`);
               if (base64Image) {
                 await delay(EMBED_DELAY_MS); // Delay before multimodal embedding
-                console.log(`[indexFile] Calling getMultimodalEmbedding...`);
                 imageVector = await getMultimodalEmbedding(
                   { text: chunk.text, image: base64Image },
                   this.embeddingConfig
                 );
-                console.log(`[indexFile] Image vector generated successfully, length: ${imageVector.length}`);
               } else {
-                console.warn(`[indexFile] imageToBase64 returned empty string for ${image.path}`);
                 imageVectorsFailed++;
               }
             } catch (error) {
@@ -935,8 +872,6 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Remove all chunks belonging to a file.
    */
   async removeFile(filePath: string): Promise<void> {
-    const table = this.ensureTable();
-
     try {
       // Get relative path for matching
       // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
@@ -944,7 +879,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       const relativePath = relative(basePath, filePath);
 
       // Delete chunks matching this source path
-      await table.delete(`sourcePath = '${relativePath}'`);
+      await this.deleteSourcePath(relativePath);
 
       // Mark BM25 index for rebuild
       this.bm25NeedsRebuild = true;
@@ -980,9 +915,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         if (record.sourcePath) {
           // Keep track of the most recent lastModified for each file
           const existing = existingFiles.get(record.sourcePath) ?? 0;
-          if (record.lastModified && record.lastModified > existing) {
-            existingFiles.set(record.sourcePath, record.lastModified);
-          }
+          const lastModified = record.lastModified ?? existing;
+          existingFiles.set(record.sourcePath, Math.max(existing, lastModified));
         }
       }
     } catch (error) {
@@ -1015,7 +949,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     for (const [sourcePath] of existingFiles) {
       if (!currentPaths.has(sourcePath)) {
         try {
-          await table.delete(`sourcePath = '${sourcePath}'`);
+          await this.deleteSourcePath(sourcePath);
           stats.removed++;
         } catch (error) {
           console.warn(`Failed to remove deleted file ${sourcePath}: ${error}`);
@@ -1036,7 +970,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         await delay(EMBED_DELAY_MS);
       }
 
-      if (!existingMtime) {
+      if (existingMtime === undefined) {
         // New file - index it
         processedFiles++;
         console.log(`[${processedFiles}/${totalFiles}] Indexing: ${file.path}`);
@@ -1046,7 +980,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         } catch (error) {
           console.warn(`Failed to index new file ${file.path}: ${error}`);
         }
-      } else if (file.mtime > existingMtime) {
+      } else if (existingMtime > 0 && file.mtime > existingMtime) {
         // Modified file - reindex it
         processedFiles++;
         console.log(`[${processedFiles}/${totalFiles}] Reindexing: ${file.path}`);

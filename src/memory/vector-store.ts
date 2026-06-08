@@ -10,6 +10,7 @@ import { type Vector, Field, FixedSizeList, Float32, Int32, List, Schema, Utf8 }
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { resolveDataPaths } from "../config.js";
 import { getEmbedding, type EmbeddingConfig } from "./embedding.js";
 import type { MemoryEntry, MemoryMatch, MemoryStore, RecallOptions } from "./types.js";
 
@@ -47,7 +48,7 @@ export class VectorMemoryStore implements MemoryStore {
 
   constructor(config: EmbeddingConfig, dbPath?: string) {
     this.embeddingConfig = config;
-    this.dbPath = dbPath ?? ".smart-assistant/vectors";
+    this.dbPath = dbPath ?? resolveDataPaths().vectors;
   }
 
   /**

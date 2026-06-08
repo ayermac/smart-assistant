@@ -5,7 +5,7 @@
  */
 
 export { get_time } from "./get_time.js";
-export { ALL_TOOLS, createAllTools } from "./registry.js";
+export { ALL_TOOLS, createAllTools, type CreateAllToolsOptions } from "./registry.js";
 export { createRememberTool, createRecallMemoryTool } from "./memory.js";
 export { createSearchKnowledgeTool } from "./knowledge.js";
 export { createCreatePlanTool, createUpdatePlanTool } from "./planning.js";

@@ -24,6 +24,10 @@ import type { MemoryStore } from "../memory/types.js";
 import type { KnowledgeStore } from "../knowledge/types.js";
 import type { PlanStore } from "../planning/types.js";
 
+export interface CreateAllToolsOptions {
+  includeTestTools?: boolean;
+}
+
 /**
  * Create all tools with injected dependencies.
  *
@@ -35,14 +39,18 @@ import type { PlanStore } from "../planning/types.js";
 export function createAllTools(
   memoryStore: MemoryStore,
   knowledgeStore?: KnowledgeStore,
-  planStore?: PlanStore
+  planStore?: PlanStore,
+  options?: CreateAllToolsOptions
 ): AgentTool[] {
   const tools: AgentTool[] = [
     get_time,
     createRememberTool(memoryStore),
     createRecallMemoryTool(memoryStore),
-    mock_failure, // Always available for testing error handling
   ];
+
+  if (options?.includeTestTools) {
+    tools.push(mock_failure);
+  }
 
   // Add knowledge tool only when knowledgeStore is provided
   if (knowledgeStore) {

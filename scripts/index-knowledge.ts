@@ -3,10 +3,11 @@
  *
  * 运行: npx tsx scripts/index-knowledge.ts
  *
- * 需要 ANTHROPIC_API_KEY 环境变量
+ * 需要 OPENAI_API_KEY 或 ANTHROPIC_API_KEY 环境变量
  */
 
 import { VectorKnowledgeStore } from "../src/knowledge/index.js";
+import { resolveDataPaths, resolveKnowledgeSourceDir } from "../src/config.js";
 import { config } from "dotenv";
 
 // 加载 .env 文件
@@ -26,14 +27,17 @@ async function main() {
     process.exit(1);
   }
 
+  const dataPaths = resolveDataPaths();
+  const sourceDir = resolveKnowledgeSourceDir();
+
   // 创建知识库存储
   const store = new VectorKnowledgeStore({
-    dbPath: ".smart-assistant/vectors",
-    sourceDir: process.env.KNOWLEDGE_SOURCE_DIR || "knowledge-sources",
+    dbPath: dataPaths.vectors,
+    sourceDir,
   });
 
-  console.log("知识源目录:", process.env.KNOWLEDGE_SOURCE_DIR || "knowledge-sources");
-  console.log("向量数据库: .smart-assistant/vectors\n");
+  console.log("知识源目录:", sourceDir);
+  console.log("向量数据库:", dataPaths.vectors, "\n");
 
   // 初始化
   console.log("1. 初始化...");

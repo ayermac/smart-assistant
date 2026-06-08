@@ -9,7 +9,12 @@ import { dirname, resolve } from "node:path";
 import { stdin, stdout, stderr } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveDataDir, resolveDataPaths, SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
+import {
+  resolveDataDir,
+  resolveDataPaths,
+  resolveKnowledgeSourceDir,
+  SMART_ASSISTANT_DATA_DIR_ENV,
+} from "./config.js";
 import { AssistantController, type AssistantEvent } from "./assistant/index.js";
 import { FileSessionStore, type SessionFile } from "./session/index.js";
 import { VaultWatcher } from "./knowledge/watcher.js";
@@ -128,8 +133,13 @@ async function resolveSession(
 }
 
 async function runInteractive(options: CliOptions): Promise<void> {
-  const dataDir = options.dataDir ?? resolveDataDir();
-  const dataPaths = resolveDataPaths(process.env);
+  const runtimeEnv = {
+    ...process.env,
+    ...(options.dataDir ? { [SMART_ASSISTANT_DATA_DIR_ENV]: options.dataDir } : {}),
+  };
+  const dataDir = resolveDataDir(runtimeEnv);
+  const dataPaths = resolveDataPaths(runtimeEnv);
+  const knowledgeSourceDir = resolveKnowledgeSourceDir(runtimeEnv);
 
   // Create session store
   const sessionStore = new FileSessionStore(dataPaths.sessions);
@@ -154,6 +164,8 @@ async function runInteractive(options: CliOptions): Promise<void> {
   try {
     controller = await AssistantController.create(session.messages, sessionStore, session.id, {
       vaultPath,
+      dataPaths,
+      knowledgeSourceDir,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -75,6 +75,38 @@ export function isUsableStoredMtime(storedMtimeMs: number | undefined, currentMt
   );
 }
 
+function createKnowledgeTableSchema(): Schema {
+  return new Schema([
+    new Field("id", new Utf8(), false),
+    new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
+    new Field("text", new Utf8(), false),
+    new Field("sourcePath", new Utf8(), false),
+    new Field("headingText", new Utf8(), false),
+    new Field("headingLevel", new Int32(), false),
+    new Field("tags", new List(new Field("item", new Utf8()))),
+    new Field("createdAt", new Utf8(), false),
+    new Field("lastModified", new Float64(), true), // file mtime seconds, nullable
+    new Field("lastModifiedMs", new Float64(), true), // file mtime milliseconds, nullable
+    new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
+    new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
+  ]);
+}
+
+export function hasCompatibleKnowledgeMtimeSchema(schema: Schema): boolean {
+  const fields = new Map(schema.fields.map((field) => [field.name, field]));
+  const lastModified = fields.get("lastModified");
+  const lastModifiedMs = fields.get("lastModifiedMs");
+
+  return (
+    lastModified !== undefined &&
+    String(lastModified.type) === "Float64" &&
+    lastModified.nullable === true &&
+    lastModifiedMs !== undefined &&
+    String(lastModifiedMs.type) === "Float64" &&
+    lastModifiedMs.nullable === true
+  );
+}
+
 /**
  * Vector dimensions for Doubao embedding model.
  * doubao-embedding-vision produces 2048-dimensional vectors.
@@ -164,23 +196,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       await this.migrateSchema();
     } else {
       // Create table with explicit schema
-      const schema = new Schema([
-        new Field("id", new Utf8(), false),
-        new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
-        new Field("text", new Utf8(), false),
-        new Field("sourcePath", new Utf8(), false),
-        new Field("headingText", new Utf8(), false),
-        new Field("headingLevel", new Int32(), false),
-        new Field("tags", new List(new Field("item", new Utf8()))),
-        new Field("createdAt", new Utf8(), false),
-        // New columns for Phase 10 (optional)
-        new Field("lastModified", new Float64(), true), // file mtime seconds, nullable
-        new Field("lastModifiedMs", new Float64(), true), // file mtime milliseconds, nullable
-        new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
-        new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
-      ]);
-
-      this.table = await this.db.createEmptyTable("knowledge", schema);
+      this.table = await this.db.createEmptyTable("knowledge", createKnowledgeTableSchema());
     }
   }
 
@@ -202,6 +218,11 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     const existingFields = new Set(schema.fields.map((f) => f.name));
 
+    if (!hasCompatibleKnowledgeMtimeSchema(schema)) {
+      await this.recreateKnowledgeTable("Migrated knowledge table schema: recreated to repair mtime columns");
+      return;
+    }
+
     // Check if migration is needed
     if (existingFields.has("lastModified") && existingFields.has("lastModifiedMs") && existingFields.has("linkedNotes")) {
       // Schema is up to date
@@ -213,31 +234,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const count = await table.countRows();
     if (count === 0) {
       // Table is empty, drop and recreate with full schema
-      try {
-        await this.db!.dropTable("knowledge");
-
-        // Recreate with full schema
-        const newSchema = new Schema([
-          new Field("id", new Utf8(), false),
-          new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
-          new Field("text", new Utf8(), false),
-          new Field("sourcePath", new Utf8(), false),
-          new Field("headingText", new Utf8(), false),
-          new Field("headingLevel", new Int32(), false),
-          new Field("tags", new List(new Field("item", new Utf8()))),
-          new Field("createdAt", new Utf8(), false),
-          // New columns for Phase 10 (optional)
-          new Field("lastModified", new Float64(), true), // file mtime seconds, nullable
-          new Field("lastModifiedMs", new Float64(), true), // file mtime milliseconds, nullable
-          new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
-          new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
-        ]);
-
-        this.table = await this.db!.createEmptyTable("knowledge", newSchema);
-        console.log("Migrated knowledge table schema: recreated with new columns");
-      } catch (error) {
-        console.warn(`Failed to recreate table: ${error}`);
-      }
+      await this.recreateKnowledgeTable("Migrated knowledge table schema: recreated with new columns");
       return;
     }
 
@@ -264,6 +261,19 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         console.warn(`Failed to migrate schema: ${error}`);
         // Continue without new columns - will use fallback behavior
       }
+    }
+  }
+
+  private async recreateKnowledgeTable(message: string): Promise<void> {
+    try {
+      await this.db!.dropTable("knowledge");
+      this.table = await this.db!.createEmptyTable("knowledge", createKnowledgeTableSchema());
+      this.manifest = null;
+      this.bm25 = null;
+      this.bm25NeedsRebuild = true;
+      console.log(message);
+    } catch (error) {
+      console.warn(`Failed to recreate table: ${error}`);
     }
   }
 

@@ -149,6 +149,7 @@ smart-assistant-tui
 | `SMART_ASSISTANT_DATA_DIR` | 本地数据目录 | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | 知识源目录 | `.smart-assistant/knowledge-sources` |
 | `SMART_ASSISTANT_KNOWLEDGE_TIMEOUT_MS` | `search_knowledge` 单步超时 | `45000` |
+| `SMART_ASSISTANT_LOG_LEVEL` | 本地诊断日志级别：`silent`、`error`、`warn`、`info`、`debug` | `info` |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault 路径（可选） | *未设置* |
 | `RERANK_ENABLED` | 启用 Rerank 重排序 | `false` |
 | `RERANK_PROVIDER` | Rerank 提供商（`cohere` 或 `noop`） | `cohere` |
@@ -243,6 +244,23 @@ COHERE_API_KEY=your-cohere-api-key
 - 提升长查询的检索精度
 - 改善语义相近但关键词不同的匹配
 - 需要额外 API 调用（Cohere Rerank API）
+
+### 诊断排查
+
+如果 `search_knowledge` 变慢或看起来卡住，可以开启 debug 日志并捕获 stderr：
+
+```bash
+SMART_ASSISTANT_LOG_LEVEL=debug smart-assistant-tui 2> smart-assistant.log
+```
+
+日志会输出 `needsReindex`、查询 embedding、向量检索、BM25 重建/检索、RRF 融合、rerank、写入等待等阶段耗时。日常使用建议保持默认 `info`；高频 vault 文件索引日志只会在 `debug` 级别输出。
+
+排查顺序：
+
+1. 先看 TUI 工具进度行：`Checking knowledge index`、`Indexing knowledge base`、`Searching knowledge base`。
+2. 再查看 `smart-assistant.log` 中的 debug 耗时，定位慢在索引、embedding、检索还是 rerank。
+3. 如果慢在索引阶段，等本轮索引完成后重新启动；mtime 元数据修复完成后，启动同步是增量的。
+4. 如果慢在 embedding 或 rerank 阶段，检查 API key、base URL 和网络连通性。
 
 ---
 
@@ -388,6 +406,8 @@ npm run dev        # 开发模式（热重载）
 npm run tui        # Ink 终端 UI
 npm run build      # 生产构建
 npm run typecheck  # 类型检查
+npm run typecheck:scripts # 检查 scripts/ 类型
+npm run verify     # 类型检查源码和脚本，运行测试，然后构建
 npm run eval       # 运行评估
 npm test           # 运行测试
 ```
@@ -411,6 +431,9 @@ npm test           # 运行测试
 **新功能：**
 - 新增 Ink 终端 UI，并提供 `smart-assistant-tui` 二进制入口。
 - 新增 CLI/TUI 共享运行时初始化，用于会话、数据路径和 vault 同步。
+- 新增结构化诊断日志，可通过 `SMART_ASSISTANT_LOG_LEVEL` 控制。
+- 新增 `npm run typecheck:scripts` 和 `npm run verify`。
+- 新增离线 RAG 集成测试，覆盖索引、搜索和来源元数据。
 
 **修复：**
 - 修复 `npm install` 依赖解析问题：对齐 `apache-arrow` 与 LanceDB 的 peer 范围，并移除未使用的 LangChain 依赖。
@@ -419,11 +442,13 @@ npm test           # 运行测试
 - 修复 TUI 初始化期间的输入和退出行为；vault 同步仍在运行时，`/exit` 和 Ctrl+C 也可退出。
 - 修复通过包管理器符号链接运行 `smart-assistant` / `smart-assistant-tui` 时入口没有执行的问题。
 - 为 `search_knowledge` 增加中断传播、进度提示和超时，避免 embedding/search 调用过慢时 TUI 一直停在 responding。
+- 串行化 startup sync、watcher 事件和 search 触发索引涉及的 knowledge-store 写入。
 - 优化 TUI 对话输出排版：固定前缀栏、自动换行、来源引用美化，并对列表续行缩进。
 
 **文档：**
 - 补充通过编译后的 `dist` 入口和安装后的 CLI 二进制进行生产使用的说明。
 - 补充 TUI 启动输入行为和 Obsidian 增量同步验证说明。
+- 补充慢 `search_knowledge` 的排查流程和完整验证命令。
 
 ### v2.3 (2026-05-26)
 

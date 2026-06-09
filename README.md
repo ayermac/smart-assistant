@@ -149,6 +149,7 @@ Production notes:
 | `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | Knowledge source directory | `.smart-assistant/knowledge-sources` |
 | `SMART_ASSISTANT_KNOWLEDGE_TIMEOUT_MS` | `search_knowledge` step timeout | `45000` |
+| `SMART_ASSISTANT_LOG_LEVEL` | Local diagnostic log level: `silent`, `error`, `warn`, `info`, `debug` | `info` |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault path (optional) | *not set* |
 | `RERANK_ENABLED` | Enable Rerank re-ranking | `false` |
 | `RERANK_PROVIDER` | Rerank provider (`cohere` or `noop`) | `cohere` |
@@ -243,6 +244,23 @@ COHERE_API_KEY=your-cohere-api-key
 - Improves retrieval precision for long queries
 - Better matches semantically similar but keyword-different content
 - Requires additional API call (Cohere Rerank API)
+
+### Diagnostics
+
+For slow or stuck `search_knowledge` calls, enable debug logs and capture stderr:
+
+```bash
+SMART_ASSISTANT_LOG_LEVEL=debug smart-assistant-tui 2> smart-assistant.log
+```
+
+The log includes per-stage timings for `needsReindex`, query embedding, vector search, BM25 rebuild/search, RRF fusion, rerank, and write waits. During normal usage, leave `SMART_ASSISTANT_LOG_LEVEL` unset or set it to `info`; high-volume vault file indexing logs are only emitted at `debug`.
+
+If a query appears stuck:
+
+1. Check the TUI tool progress line (`Checking knowledge index`, `Indexing knowledge base`, `Searching knowledge base`).
+2. Review debug timings in `smart-assistant.log` to identify the slow stage.
+3. If the slow stage is indexing, rerun the app after indexing completes; startup sync is incremental after mtime metadata is repaired.
+4. If the slow stage is embedding or rerank, verify the provider API key, base URL, and network access.
 
 ---
 
@@ -388,6 +406,8 @@ npm run dev        # Development mode (hot reload)
 npm run tui        # Ink terminal UI
 npm run build      # Production build
 npm run typecheck  # Type checking
+npm run typecheck:scripts # Type check scripts/
+npm run verify     # Typecheck source + scripts, run tests, then build
 npm run eval       # Run evaluations
 npm test           # Run tests
 ```
@@ -411,6 +431,9 @@ npm test           # Run tests
 **New Features:**
 - Added Ink terminal UI with `smart-assistant-tui` binary.
 - Added shared CLI/TUI runtime setup for sessions, data paths, and vault sync.
+- Added structured diagnostic logging with `SMART_ASSISTANT_LOG_LEVEL`.
+- Added `npm run typecheck:scripts` and `npm run verify`.
+- Added offline RAG integration coverage for index + search metadata.
 
 **Fixes:**
 - Fixed `npm install` dependency resolution by aligning `apache-arrow` with LanceDB and removing unused LangChain dependencies.
@@ -419,11 +442,13 @@ npm test           # Run tests
 - Fixed TUI input and exit behavior during initialization; `/exit` and Ctrl+C work while vault sync is still running.
 - Fixed installed npm binary execution when package-manager bin links are symlinks.
 - Added abort propagation, progress updates, and timeouts for `search_knowledge` so slow embedding/search calls do not leave the TUI indefinitely responding.
+- Serialized knowledge-store writes from startup sync, watcher events, and search-triggered indexing.
 - Improved TUI transcript formatting with fixed prefixes, wrapped assistant output, cleaner citations, and indented list continuations.
 
 **Docs:**
 - Documented production usage through compiled `dist` entry points and installed CLI binaries.
 - Documented TUI startup input behavior and incremental Obsidian sync verification.
+- Documented slow `search_knowledge` diagnostics and full verification workflow.
 
 ### v2.3 (2026-05-26)
 

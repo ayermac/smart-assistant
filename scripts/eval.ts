@@ -308,7 +308,7 @@ const testCases: TestCase[] = [
         const knowledgeStore = new FileKnowledgeStore();
 
         // Search should return empty array for non-existent term
-        const searchResults = await knowledgeStore.search(searchTerm, 5);
+        const searchResults = await knowledgeStore.search(searchTerm, { limit: 5 });
         const isEmptyResult = searchResults.length === 0;
 
         const duration = Date.now() - start;

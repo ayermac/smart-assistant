@@ -7,6 +7,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { KnowledgeStore } from "../knowledge/types.js";
+import { createLogger } from "../logger.js";
 
 export const DEFAULT_KNOWLEDGE_TOOL_TIMEOUT_MS = 45_000;
 
@@ -137,6 +138,7 @@ export function createSearchKnowledgeTool(
   options?: CreateSearchKnowledgeToolOptions
 ): AgentTool<typeof SearchKnowledgeParameters, SearchKnowledgeDetails> {
   const timeoutMs = options?.timeoutMs ?? resolveKnowledgeToolTimeoutMs();
+  const logger = createLogger("tool.search_knowledge");
 
   return {
     name: "search_knowledge",
@@ -219,6 +221,12 @@ export function createSearchKnowledgeTool(
             })
         );
 
+        logger.debug("search_knowledge completed", {
+          queryLength: params.query.length,
+          matches: matches.length,
+          timeoutMs,
+        });
+
         // Handle empty results
         if (matches.length === 0) {
           return {
@@ -281,6 +289,10 @@ export function createSearchKnowledgeTool(
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error occurred";
+        logger.warn("search_knowledge failed", {
+          queryLength: params.query.length,
+          error: errorMessage,
+        });
 
         return {
           content: [

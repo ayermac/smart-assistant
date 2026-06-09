@@ -18,6 +18,8 @@ import { rrfFusion, type VectorMatch } from "./fusion.js";
 import { getMultimodalEmbedding, imageToBase64 } from "./multimodal-embedding.js";
 import type { Reranker } from "./rerank/index.js";
 import { noopReranker, createRerankerFromEnv } from "./rerank/index.js";
+import { createLogger, timeAsync, type Logger } from "../logger.js";
+import { AsyncOperationQueue } from "./write-queue.js";
 import type {
   KnowledgeChunk,
   KnowledgeManifest,
@@ -191,6 +193,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   private manifest: KnowledgeManifest | null = null;
   private bm25: BM25Retriever | null = null;
   private bm25NeedsRebuild: boolean = true;
+  private readonly logger: Logger;
+  private readonly writeQueue = new AsyncOperationQueue();
 
   constructor(config?: VectorKnowledgeStoreConfig) {
     this.embeddingConfig = config?.embeddingConfig ?? createDefaultEmbeddingConfig();
@@ -206,6 +210,32 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     } else {
       this.reranker = noopReranker;
     }
+
+    this.logger = createLogger("knowledge");
+  }
+
+  private async runWrite<T>(operation: string, task: () => Promise<T>): Promise<T> {
+    if (this.writeQueue.size > 0) {
+      this.logger.debug("knowledge write waiting", {
+        operation,
+        pendingWrites: this.writeQueue.size,
+      });
+    }
+
+    return this.writeQueue.run(() =>
+      timeAsync(this.logger, "debug", `knowledge.${operation}`, task, { operation })
+    );
+  }
+
+  private async waitForWrites(operation: string, signal?: AbortSignal): Promise<void> {
+    if (this.writeQueue.size > 0) {
+      this.logger.debug("knowledge read waiting for writes", {
+        operation,
+        pendingWrites: this.writeQueue.size,
+      });
+    }
+
+    await this.writeQueue.wait(signal);
   }
 
   /**
@@ -286,9 +316,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     if (columnsToAdd.length > 0) {
       try {
         await table.addColumns(columnsToAdd);
-        console.log(`Migrated knowledge table schema: added ${columnsToAdd.map(c => c.name).join(", ")}`);
+        this.logger.info("Migrated knowledge table schema", {
+          columns: columnsToAdd.map(c => c.name).join(","),
+        });
       } catch (error) {
-        console.warn(`Failed to migrate schema: ${error}`);
+        this.logger.warn("Failed to migrate schema", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         // Continue without new columns - will use fallback behavior
       }
     }
@@ -301,9 +335,11 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       this.manifest = null;
       this.bm25 = null;
       this.bm25NeedsRebuild = true;
-      console.log(message);
+      this.logger.info(message);
     } catch (error) {
-      console.warn(`Failed to recreate table: ${error}`);
+      this.logger.warn("Failed to recreate table", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -431,6 +467,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Ingest files from the knowledge source directory.
    */
   async ingest(options?: IngestOptions): Promise<KnowledgeManifest> {
+    return this.runWrite("ingest", () => this.ingestUnlocked(options));
+  }
+
+  private async ingestUnlocked(options?: IngestOptions): Promise<KnowledgeManifest> {
     throwIfAborted(options?.signal);
     const sourceFiles = await this.scanSourceFiles();
 
@@ -440,16 +480,22 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       try {
         await this.deleteSourcePath(sourcePath);
       } catch (error) {
-        console.warn(`Failed to remove existing chunks for ${sourcePath}: ${error}`);
+        this.logger.warn("Failed to remove existing chunks", {
+          sourcePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
     for (const sourceFile of sourceFiles) {
       throwIfAborted(options?.signal);
       try {
-        await this.indexFile(sourceFile.absolutePath, { signal: options?.signal });
+        await this.indexFileUnlocked(sourceFile.absolutePath, { signal: options?.signal });
       } catch (error) {
-        console.warn(`Failed to ingest ${sourceFile.path}: ${error}`);
+        this.logger.warn("Failed to ingest source file", {
+          sourcePath: sourceFile.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -472,11 +518,20 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Search knowledge chunks using hybrid retrieval (vector + BM25 + RRF fusion).
    */
   async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
+    await this.waitForWrites("search", options?.signal);
     throwIfAborted(options?.signal);
     const table = this.ensureTable();
 
     // Trigger ingestion if needed
-    if (await this.needsReindex()) {
+    const needsReindex = await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.needsReindex",
+      () => this.needsReindex(),
+      { queryLength: query.length }
+    );
+
+    if (needsReindex) {
       await this.ingest({ signal: options?.signal });
     }
 
@@ -488,7 +543,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const limit = options?.limit ?? 5;
 
     // Generate embedding for query
-    const queryVector = await getEmbedding(query, this.embeddingConfig, { signal: options?.signal });
+    const queryVector = await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.embedding",
+      () => getEmbedding(query, this.embeddingConfig, { signal: options?.signal }),
+      { queryLength: query.length }
+    );
     throwIfAborted(options?.signal);
 
     // Vector search (top 20) - explicitly specify 'vector' column since table has multiple vector columns
@@ -499,9 +560,16 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       vectorSearchQuery = vectorSearchQuery.where(`sourcePath LIKE '%${escapeSqlString(options.sourcePath)}%'`) as typeof vectorSearchQuery;
     }
 
-    const vectorResults = await vectorSearchQuery
-      .select(["id", "text", "sourcePath", "headingText", "headingLevel", "tags", "createdAt", "_distance"])
-      .toArray();
+    const vectorResults = await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.vector",
+      () =>
+        vectorSearchQuery
+          .select(["id", "text", "sourcePath", "headingText", "headingLevel", "tags", "createdAt", "_distance"])
+          .toArray(),
+      { limit: 20 }
+    );
 
     // Convert vector results to VectorMatch[]
     const vectorMatches: VectorMatch[] = [];
@@ -539,14 +607,44 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     }
 
     // BM25 search (top 20)
-    await this.ensureBM25Index();
-    const bm25Results: BM25Match[] = this.bm25!.search(query, 20);
+    await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.bm25Index",
+      () => this.ensureBM25Index()
+    );
+    const bm25Results: BM25Match[] = await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.bm25",
+      async () => this.bm25!.search(query, 20),
+      { limit: 20 }
+    );
 
     // RRF fusion - get top 20 candidates for reranking
-    const candidates = rrfFusion(vectorMatches, bm25Results, { topN: 20 });
+    const candidates = await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.fusion",
+      async () => rrfFusion(vectorMatches, bm25Results, { topN: 20 }),
+      {
+        vectorMatches: vectorMatches.length,
+        bm25Matches: bm25Results.length,
+      }
+    );
 
     // Rerank candidates to get final results
-    const reranked = await this.reranker.rerank(query, candidates, { topN: limit, signal: options?.signal });
+    const reranked = await timeAsync(
+      this.logger,
+      "debug",
+      "knowledge.search.rerank",
+      () => this.reranker.rerank(query, candidates, { topN: limit, signal: options?.signal }),
+      {
+        candidates: candidates.length,
+        limit,
+        reranker: this.reranker.name,
+      }
+    );
 
     // Map reranked results to KnowledgeMatch[]
     // We need to re-fetch full chunk data for the reranked results
@@ -767,6 +865,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Reads file content, chunks it, generates embeddings, and stores in LanceDB.
    */
   async indexFile(filePath: string, options?: IngestOptions): Promise<void> {
+    return this.runWrite("indexFile", () => this.indexFileUnlocked(filePath, options));
+  }
+
+  private async indexFileUnlocked(filePath: string, options?: IngestOptions): Promise<void> {
     throwIfAborted(options?.signal);
     const table = this.ensureTable();
 
@@ -862,7 +964,12 @@ export class VectorKnowledgeStore implements KnowledgeStore {
               if (errorMsg.includes("429") || errorMsg.includes("RateLimit")) {
                 // Rate limit - exponential backoff
                 const backoffDelay = RETRY_BASE_DELAY_MS * Math.pow(2, retry);
-                console.warn(`Rate limit hit, retrying in ${backoffDelay}ms (attempt ${retry + 1}/${MAX_RETRIES})`);
+                this.logger.warn("Embedding rate limit hit", {
+                  chunkId: chunk.id,
+                  backoffDelay,
+                  attempt: retry + 1,
+                  maxRetries: MAX_RETRIES,
+                });
                 await delay(backoffDelay, options?.signal);
                 continue;
               }
@@ -871,7 +978,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           }
 
           if (!vector) {
-            console.warn(`Failed to embed chunk ${chunk.id} after ${MAX_RETRIES} retries`);
+            this.logger.warn("Failed to embed chunk after retries", {
+              chunkId: chunk.id,
+              maxRetries: MAX_RETRIES,
+            });
             continue;
           }
 
@@ -894,7 +1004,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
                 imageVectorsFailed++;
               }
             } catch (error) {
-              console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);
+              this.logger.warn("Failed to generate image vector", {
+                chunkId: chunk.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
               imageVectorsFailed++;
             }
           }
@@ -934,13 +1047,20 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           if (options?.signal?.aborted) {
             throw error;
           }
-          console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
+          this.logger.warn("Failed to embed chunk", {
+            chunkId: chunk.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
 
       // Summary log for image vectors
       if (chunksWithImages.length > 0) {
-        console.log(`[indexFile] Image vector summary: ${imageVectorsStored} stored, ${imageVectorsFailed} failed, ${chunksWithImages.length} total chunks with images`);
+        this.logger.debug("Image vector summary", {
+          stored: imageVectorsStored,
+          failed: imageVectorsFailed,
+          totalChunksWithImages: chunksWithImages.length,
+        });
       }
 
       // Mark BM25 index for rebuild
@@ -955,14 +1075,22 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Reindex a file by removing old chunks and adding new ones.
    */
   async reindexFile(filePath: string): Promise<void> {
-    await this.removeFile(filePath);
-    await this.indexFile(filePath);
+    return this.runWrite("reindexFile", () => this.reindexFileUnlocked(filePath));
+  }
+
+  private async reindexFileUnlocked(filePath: string): Promise<void> {
+    await this.removeFileUnlocked(filePath);
+    await this.indexFileUnlocked(filePath);
   }
 
   /**
    * Remove all chunks belonging to a file.
    */
   async removeFile(filePath: string): Promise<void> {
+    return this.runWrite("removeFile", () => this.removeFileUnlocked(filePath));
+  }
+
+  private async removeFileUnlocked(filePath: string): Promise<void> {
     try {
       // Get relative path for matching
       // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
@@ -985,6 +1113,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Returns statistics about the sync operation.
    */
   async syncVault(vaultPath: string): Promise<{ added: number; updated: number; removed: number }> {
+    return this.runWrite("syncVault", () => this.syncVaultUnlocked(vaultPath));
+  }
+
+  private async syncVaultUnlocked(vaultPath: string): Promise<{ added: number; updated: number; removed: number }> {
     const table = this.ensureTable();
     const stats = { added: 0, updated: 0, removed: 0 };
 
@@ -1015,7 +1147,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       // This happens when upgrading from an older schema
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes("lastModified")) {
-        console.log("Note: lastModified column not found, performing full sync");
+        this.logger.info("lastModified column not found, performing full sync");
         // Query just sourcePath to get existing files
         try {
           const results = await table.query()
@@ -1043,7 +1175,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           await this.deleteSourcePath(sourcePath);
           stats.removed++;
         } catch (error) {
-          console.warn(`Failed to remove deleted file ${sourcePath}: ${error}`);
+          this.logger.warn("Failed to remove deleted file", {
+            sourcePath,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
     }
@@ -1064,28 +1199,42 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       if (existingMtime === undefined) {
         // New file - index it
         processedFiles++;
-        console.log(`[${processedFiles}/${totalFiles}] Indexing: ${file.path}`);
+        this.logger.debug("Indexing vault file", {
+          processedFiles,
+          totalFiles,
+          sourcePath: file.path,
+        });
         try {
-          await this.indexFile(file.absolutePath);
+          await this.indexFileUnlocked(file.absolutePath);
           stats.added++;
         } catch (error) {
-          console.warn(`Failed to index new file ${file.path}: ${error}`);
+          this.logger.warn("Failed to index new file", {
+            sourcePath: file.path,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       } else if (!isUsableStoredMtime(existingMtime, file.mtime) || file.mtime > existingMtime) {
         // Modified file - reindex it
         processedFiles++;
-        console.log(`[${processedFiles}/${totalFiles}] Reindexing: ${file.path}`);
+        this.logger.debug("Reindexing vault file", {
+          processedFiles,
+          totalFiles,
+          sourcePath: file.path,
+        });
         try {
-          await this.reindexFile(file.absolutePath);
+          await this.reindexFileUnlocked(file.absolutePath);
           stats.updated++;
         } catch (error) {
-          console.warn(`Failed to reindex modified file ${file.path}: ${error}`);
+          this.logger.warn("Failed to reindex modified file", {
+            sourcePath: file.path,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
     }
 
     if (processedFiles === 0) {
-      console.log(`Vault already up to date (${totalFiles} files)`);
+      this.logger.debug("Vault already up to date", { totalFiles });
     }
 
     // Mark BM25 index for rebuild
@@ -1093,6 +1242,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       this.bm25NeedsRebuild = true;
     }
 
+    this.logger.debug("Vault sync stats", stats);
     return stats;
   }
 

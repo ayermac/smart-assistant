@@ -14,7 +14,9 @@
     "tui": "tsx src/tui.tsx",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "test": "vitest run",
+    "verify": "npm run typecheck && npm run typecheck:scripts && npm test && npm run build",
     "start": "node dist/cli.js",
     "eval": "tsx scripts/eval.ts"
   },

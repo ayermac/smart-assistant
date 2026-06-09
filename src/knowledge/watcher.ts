@@ -7,6 +7,7 @@
 import * as chokidar from "chokidar";
 import { stat, readdir } from "node:fs/promises";
 import { join, extname, relative } from "node:path";
+import { createLogger, type Logger } from "../logger.js";
 import type { VectorKnowledgeStore } from "./vector-store.js";
 
 /**
@@ -33,11 +34,13 @@ export class VaultWatcher {
   private watcher: chokidar.FSWatcher | null = null;
   private pendingUpdates: Map<string, NodeJS.Timeout> = new Map();
   private filesTracked: number = 0;
+  private readonly logger: Logger;
 
   constructor(config: VaultWatcherConfig) {
     this.vaultPath = config.vaultPath;
     this.store = config.store;
     this.debounceMs = config.debounceMs ?? 1000;
+    this.logger = createLogger("vault-watcher");
   }
 
   /**
@@ -85,7 +88,7 @@ export class VaultWatcher {
 
     this.watcher.on("error", (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[VaultWatcher] Error: ${message}`);
+      this.logger.error("Watcher error", { error: message });
     });
 
     // Count tracked files
@@ -156,23 +159,33 @@ export class VaultWatcher {
         case "add":
           await this.store.indexFile(filePath);
           this.filesTracked++;
-          console.log(`[VaultWatcher] Indexed new file: ${relative(this.vaultPath, filePath)}`);
+          this.logger.debug("Indexed new file", {
+            sourcePath: relative(this.vaultPath, filePath),
+          });
           break;
 
         case "change":
           await this.store.reindexFile(filePath);
-          console.log(`[VaultWatcher] Reindexed modified file: ${relative(this.vaultPath, filePath)}`);
+          this.logger.debug("Reindexed modified file", {
+            sourcePath: relative(this.vaultPath, filePath),
+          });
           break;
 
         case "unlink":
           await this.store.removeFile(filePath);
           this.filesTracked--;
-          console.log(`[VaultWatcher] Removed deleted file: ${relative(this.vaultPath, filePath)}`);
+          this.logger.debug("Removed deleted file", {
+            sourcePath: relative(this.vaultPath, filePath),
+          });
           break;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[VaultWatcher] Failed to process ${eventType} for ${filePath}: ${message}`);
+      this.logger.error("Failed to process file event", {
+        eventType,
+        sourcePath: relative(this.vaultPath, filePath),
+        error: message,
+      });
     }
   }
 

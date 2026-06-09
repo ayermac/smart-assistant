@@ -42,6 +42,8 @@ const MAX_RETRIES = 3;
  * Base delay for exponential backoff on rate limit errors.
  */
 const RETRY_BASE_DELAY_MS = 1000;
+const MIN_VALID_MTIME_MS = 946684800000; // 2000-01-01T00:00:00.000Z
+const MTIME_FUTURE_TOLERANCE_MS = 60_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -49,6 +51,28 @@ function delay(ms: number): Promise<void> {
 
 function escapeSqlString(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+export function getStoredMtimeMs(lastModifiedMs?: number, lastModified?: number): number {
+  if (typeof lastModifiedMs === "number" && Number.isFinite(lastModifiedMs) && lastModifiedMs >= MIN_VALID_MTIME_MS) {
+    return lastModifiedMs;
+  }
+
+  // Compatibility with the short-lived Float64 lastModified schema that stored mtimeMs directly.
+  if (typeof lastModified === "number" && Number.isFinite(lastModified) && lastModified >= MIN_VALID_MTIME_MS) {
+    return lastModified;
+  }
+
+  return 0;
+}
+
+export function isUsableStoredMtime(storedMtimeMs: number | undefined, currentMtimeMs: number): boolean {
+  return (
+    storedMtimeMs !== undefined &&
+    Number.isFinite(storedMtimeMs) &&
+    storedMtimeMs >= MIN_VALID_MTIME_MS &&
+    storedMtimeMs <= currentMtimeMs + MTIME_FUTURE_TOLERANCE_MS
+  );
 }
 
 /**
@@ -150,7 +174,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         new Field("tags", new List(new Field("item", new Utf8()))),
         new Field("createdAt", new Utf8(), false),
         // New columns for Phase 10 (optional)
-        new Field("lastModified", new Float64(), true), // file mtime, nullable
+        new Field("lastModified", new Float64(), true), // file mtime seconds, nullable
+        new Field("lastModifiedMs", new Float64(), true), // file mtime milliseconds, nullable
         new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
         new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
       ]);
@@ -178,7 +203,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const existingFields = new Set(schema.fields.map((f) => f.name));
 
     // Check if migration is needed
-    if (existingFields.has("lastModified") && existingFields.has("linkedNotes")) {
+    if (existingFields.has("lastModified") && existingFields.has("lastModifiedMs") && existingFields.has("linkedNotes")) {
       // Schema is up to date
       return;
     }
@@ -202,7 +227,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           new Field("tags", new List(new Field("item", new Utf8()))),
           new Field("createdAt", new Utf8(), false),
           // New columns for Phase 10 (optional)
-          new Field("lastModified", new Float64(), true), // file mtime, nullable
+          new Field("lastModified", new Float64(), true), // file mtime seconds, nullable
+          new Field("lastModifiedMs", new Float64(), true), // file mtime milliseconds, nullable
           new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
           new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
         ]);
@@ -220,6 +246,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     if (!existingFields.has("lastModified")) {
       columnsToAdd.push({ name: "lastModified", valueSql: "0" });
+    }
+
+    if (!existingFields.has("lastModifiedMs")) {
+      columnsToAdd.push({ name: "lastModifiedMs", valueSql: "0.0" });
     }
 
     if (!existingFields.has("linkedNotes")) {
@@ -264,6 +294,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   private async deleteSourcePath(sourcePath: string): Promise<void> {
     const table = this.ensureTable();
     await table.delete(`sourcePath = '${escapeSqlString(sourcePath)}'`);
+    this.manifest = null;
   }
 
   /**
@@ -528,7 +559,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const table = this.ensureTable();
     try {
       const results = await table.query()
-        .select(["id", "sourcePath", "headingText", "headingLevel", "tags", "text", "createdAt", "lastModified"])
+        .select(["id", "sourcePath", "headingText", "headingLevel", "tags", "text", "createdAt", "lastModified", "lastModifiedMs"])
         .toArray();
 
       if (results.length === 0) {
@@ -548,9 +579,12 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           text?: string;
           createdAt?: string;
           lastModified?: number;
+          lastModifiedMs?: number;
         };
 
         if (record.id && record.text && record.sourcePath) {
+          const storedMtimeMs = getStoredMtimeMs(record.lastModifiedMs, record.lastModified);
+
           chunks.push({
             id: record.id,
             sourcePath: record.sourcePath,
@@ -568,13 +602,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
             sourceMap.set(record.sourcePath, {
               path: record.sourcePath,
               absolutePath: join(basePath, record.sourcePath),
-              mtime: record.lastModified ?? 0,
+              mtime: storedMtimeMs,
               chunkCount: 0,
             });
           }
           const source = sourceMap.get(record.sourcePath)!;
-          if (record.lastModified && record.lastModified > source.mtime) {
-            source.mtime = record.lastModified;
+          if (storedMtimeMs > source.mtime) {
+            source.mtime = storedMtimeMs;
           }
           source.chunkCount++;
         }
@@ -620,7 +654,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     for (const source of manifest.sources) {
       try {
         const fileStat = await stat(source.absolutePath);
-        if (fileStat.mtimeMs !== source.mtime) {
+        if (!isUsableStoredMtime(source.mtime, fileStat.mtimeMs) || fileStat.mtimeMs !== source.mtime) {
           return true;
         }
       } catch {
@@ -692,6 +726,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     // Check schema for optional fields
     let schemaHasLastModified = false;
+    let schemaHasLastModifiedMs = false;
     let schemaHasLinkedNotes = false;
     let schemaHasImageVector = false;
 
@@ -699,6 +734,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       const schema = await table.schema();
       const fieldNames = new Set(schema.fields.map(f => f.name));
       schemaHasLastModified = fieldNames.has("lastModified");
+      schemaHasLastModifiedMs = fieldNames.has("lastModifiedMs");
       schemaHasLinkedNotes = fieldNames.has("linkedNotes");
       schemaHasImageVector = fieldNames.has("imageVector");
     } catch {
@@ -749,10 +785,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       const chunksWithImages = chunks.filter(c => c.images && c.images.length > 0);
 
       // Get file modification time (only used if schema supports it)
-      let lastModified: number | undefined;
-      if (schemaHasLastModified) {
+      let lastModifiedMs: number | undefined;
+      if (schemaHasLastModified || schemaHasLastModifiedMs) {
         const fileStat = await stat(filePath);
-        lastModified = fileStat.mtimeMs;
+        lastModifiedMs = fileStat.mtimeMs;
       }
 
       // Generate embeddings and store in LanceDB
@@ -828,8 +864,12 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           };
 
           // Add optional fields only if schema supports them
-          if (schemaHasLastModified && lastModified !== undefined) {
-            record.lastModified = lastModified;
+          if (schemaHasLastModified && lastModifiedMs !== undefined) {
+            record.lastModified = Math.floor(lastModifiedMs / 1000);
+          }
+
+          if (schemaHasLastModifiedMs && lastModifiedMs !== undefined) {
+            record.lastModifiedMs = lastModifiedMs;
           }
 
           if (schemaHasLinkedNotes && chunk.linkedNotes && chunk.linkedNotes.length > 0) {
@@ -907,16 +947,16 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     try {
       const results = await table.query()
-        .select(["sourcePath", "lastModified"])
+        .select(["sourcePath", "lastModified", "lastModifiedMs"])
         .toArray();
 
       for (const row of results) {
-        const record = row as { sourcePath?: string; lastModified?: number };
+        const record = row as { sourcePath?: string; lastModified?: number; lastModifiedMs?: number };
         if (record.sourcePath) {
           // Keep track of the most recent lastModified for each file
           const existing = existingFiles.get(record.sourcePath) ?? 0;
-          const lastModified = record.lastModified ?? existing;
-          existingFiles.set(record.sourcePath, Math.max(existing, lastModified));
+          const storedMtimeMs = getStoredMtimeMs(record.lastModifiedMs, record.lastModified);
+          existingFiles.set(record.sourcePath, Math.max(existing, storedMtimeMs));
         }
       }
     } catch (error) {
@@ -980,7 +1020,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         } catch (error) {
           console.warn(`Failed to index new file ${file.path}: ${error}`);
         }
-      } else if (existingMtime > 0 && file.mtime > existingMtime) {
+      } else if (!isUsableStoredMtime(existingMtime, file.mtime) || file.mtime > existingMtime) {
         // Modified file - reindex it
         processedFiles++;
         console.log(`[${processedFiles}/${totalFiles}] Reindexing: ${file.path}`);

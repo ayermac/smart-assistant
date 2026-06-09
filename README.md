@@ -221,6 +221,8 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 - **Images**: Supports multimodal embedding for images in vault
 - **Tags**: Extracts `#tags` and frontmatter tags for metadata
 
+Startup sync is incremental. When upgrading from an older local LanceDB table, the first run may reindex existing vault files once to backfill reliable millisecond modification metadata. Later starts should report the vault is already up to date unless files changed.
+
 ### Obsidian-Specific Parsing
 
 | Feature | Support |
@@ -239,6 +241,8 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 4. Create/modify/delete notes in Obsidian
 5. Changes are indexed automatically
 6. Query your vault in CLI or TUI
+
+To verify incremental startup behavior, run `npm run tui` or `npm run dev` twice without editing the vault. The first run after an upgrade can show `Reindexing` while metadata is repaired; the second unchanged run should show `Vault already up to date`.
 
 ---
 

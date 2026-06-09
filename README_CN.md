@@ -221,6 +221,8 @@ OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 - **图片支持**：支持 vault 中图片的多模态嵌入
 - **标签**：提取 `#tags` 和 frontmatter 标签作为元数据
 
+启动同步是增量的。如果从旧版本地 LanceDB 表升级，第一次启动可能会对已有 vault 文件重索引一次，用来回填可靠的毫秒级修改时间元数据。之后未修改文件时再次启动，应显示 vault 已是最新状态。
+
 ### Obsidian 特定解析
 
 | 特性 | 支持 |
@@ -239,6 +241,8 @@ OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 4. 在 Obsidian 中创建/修改/删除笔记
 5. 变更自动被索引
 6. 在 CLI 或 TUI 中查询 vault 内容
+
+验证启动增量同步：不修改 vault，连续运行两次 `npm run tui` 或 `npm run dev`。升级后的第一次可能显示 `Reindexing` 修复旧元数据；第二次应显示 `Vault already up to date`。
 
 ---
 

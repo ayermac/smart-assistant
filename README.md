@@ -69,6 +69,8 @@ Ink terminal UI:
 npm run tui
 ```
 
+The TUI accepts keyboard input as soon as the prompt is visible. During startup vault sync or runtime initialization, `/exit` and Ctrl+C still exit the process; non-command prompts submitted before the assistant is ready show `Assistant is still initializing.`
+
 After building, the package exposes both binaries:
 
 ```bash
@@ -243,6 +245,8 @@ Startup sync is incremental. When upgrading from an older local LanceDB table, t
 6. Query your vault in CLI or TUI
 
 To verify incremental startup behavior, run `npm run tui` or `npm run dev` twice without editing the vault. The first run after an upgrade can show `Reindexing` while metadata is repaired; the second unchanged run should show `Vault already up to date`.
+
+If the TUI is still initializing while vault sync runs, the prompt remains interactive. Use `/exit` or Ctrl+C to leave without waiting for initialization to finish.
 
 ---
 

@@ -8,6 +8,7 @@
 - Made explicit TUI exit call `process.exit(0)` after Ink cleanup.
 - Added raw newline/carriage-return submit handling for terminals where Enter is not reported as `key.return`.
 - Verified `/exit\n` exits a temporary TUI session.
+- Updated README and README_CN with TUI initialization input and exit behavior.
 
 ## Behavior
 
@@ -21,3 +22,4 @@
 - `npm test` passed: 7 test files, 57 tests.
 - `npm run build` passed.
 - Temporary TUI session with isolated data/vault paths accepted `/exit\n` and exited with code 0.
+- `git diff --check` passed after documentation updates.

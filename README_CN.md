@@ -69,6 +69,8 @@ Ink 终端 UI：
 npm run tui
 ```
 
+TUI 在输入框显示后即可接收键盘输入。启动 vault 同步或运行时初始化期间，`/exit` 和 Ctrl+C 仍可退出进程；如果在助手未就绪前提交普通问题，会显示 `Assistant is still initializing.`。
+
 构建后会提供两个入口：
 
 ```bash
@@ -243,6 +245,8 @@ OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 6. 在 CLI 或 TUI 中查询 vault 内容
 
 验证启动增量同步：不修改 vault，连续运行两次 `npm run tui` 或 `npm run dev`。升级后的第一次可能显示 `Reindexing` 修复旧元数据；第二次应显示 `Vault already up to date`。
+
+如果 TUI 在 vault 同步期间仍显示初始化中，输入框仍可交互。可使用 `/exit` 或 Ctrl+C 直接退出，无需等待初始化结束。
 
 ---
 

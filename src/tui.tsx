@@ -8,6 +8,12 @@ import { Box, Text, render, useApp, useInput, useWindowSize } from "ink";
 import { SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
 import type { AssistantEvent } from "./assistant/index.js";
 import {
+  formatLogRows,
+  LOG_PREFIX_WIDTH,
+  type LogKind,
+  type LogLine,
+} from "./tui-format.js";
+import {
   buildUsage,
   createAssistantRuntime,
   isDirectExecution,
@@ -16,14 +22,6 @@ import {
   type AssistantRuntime,
   type CliOptions,
 } from "./runtime.js";
-
-type LogKind = "system" | "user" | "assistant" | "tool" | "error";
-
-interface LogLine {
-  id: number;
-  kind: LogKind;
-  text: string;
-}
 
 function lineColor(kind: LogKind): string {
   switch (kind) {
@@ -40,24 +38,9 @@ function lineColor(kind: LogKind): string {
   }
 }
 
-function linePrefix(kind: LogKind): string {
-  switch (kind) {
-    case "system":
-      return "system";
-    case "user":
-      return "you";
-    case "assistant":
-      return "assistant";
-    case "tool":
-      return "tool";
-    case "error":
-      return "error";
-  }
-}
-
 function App({ options }: { options: CliOptions }) {
   const { exit } = useApp();
-  const { rows } = useWindowSize();
+  const { rows, columns } = useWindowSize();
   const [runtime, setRuntime] = useState<AssistantRuntime | null>(null);
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const [lines, setLines] = useState<LogLine[]>([]);
@@ -260,7 +243,9 @@ function App({ options }: { options: CliOptions }) {
   });
 
   const maxLogLines = Math.max(8, rows - 7);
-  const visibleLines = lines.slice(-maxLogLines);
+  const availableContentWidth = Math.max(24, columns - LOG_PREFIX_WIDTH - 6);
+  const contentWidth = Math.min(112, availableContentWidth);
+  const visibleRows = formatLogRows(lines, contentWidth).slice(-maxLogLines);
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -270,10 +255,14 @@ function App({ options }: { options: CliOptions }) {
       </Box>
 
       <Box flexDirection="column" minHeight={maxLogLines}>
-        {visibleLines.map((line) => (
-          <Box key={line.id}>
-            <Text color={lineColor(line.kind)}>{linePrefix(line.kind)}&gt; </Text>
-            <Text color={lineColor(line.kind)}>{line.text}</Text>
+        {visibleRows.map((row) => (
+          <Box key={row.key}>
+            <Box width={LOG_PREFIX_WIDTH}>
+              <Text color={lineColor(row.kind)}>{row.prefix}</Text>
+            </Box>
+            <Box width={contentWidth}>
+              <Text color={lineColor(row.kind)} wrap="truncate-end">{row.text}</Text>
+            </Box>
           </Box>
         ))}
         {isInitializing ? (

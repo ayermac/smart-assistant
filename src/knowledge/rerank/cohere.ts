@@ -17,6 +17,7 @@ const DEFAULT_MODEL = "rerank-english-v3.0";
  * Default Cohere API base URL.
  */
 const DEFAULT_BASE_URL = "https://api.cohere.ai/v1";
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
  * Cohere reranker implementation.
@@ -29,11 +30,13 @@ export class CohereReranker implements Reranker {
   private readonly apiKey: string;
   private readonly model: string;
   private readonly baseUrl: string;
+  private readonly timeoutMs: number;
 
   constructor(config: CohereRerankerConfig) {
     this.apiKey = config.apiKey;
     this.model = config.model ?? DEFAULT_MODEL;
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   /**
@@ -57,18 +60,35 @@ export class CohereReranker implements Reranker {
 
     try {
       // Call Cohere rerank API
+      const signals = [
+        ...(options?.signal ? [options.signal] : []),
+        AbortSignal.timeout(this.timeoutMs),
+      ];
+      const signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+
       const response = await fetch(`${this.baseUrl}/rerank`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
+        signal,
         body: JSON.stringify({
           model: this.model,
           query,
           documents: results.map((r) => ({ text: r.text })),
           top_n: Math.min(topN, results.length),
         }),
+      }).catch((error: unknown) => {
+        if (options?.signal?.aborted) {
+          throw new Error("Cohere rerank request aborted");
+        }
+
+        if (signal.aborted) {
+          throw new Error(`Cohere rerank API timed out after ${this.timeoutMs}ms`);
+        }
+
+        throw error;
       });
 
       if (!response.ok) {

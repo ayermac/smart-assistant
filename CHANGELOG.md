@@ -15,6 +15,7 @@ All notable changes to Smart Assistant will be documented in this file.
 - Legacy knowledge table schema repair for `lastModifiedMs`, avoiding LanceDB `Panic in async function` failures.
 - TUI input and exit behavior during initialization; `/exit` and Ctrl+C now work while vault sync is still running.
 - Installed npm binary execution when `smart-assistant` or `smart-assistant-tui` is reached through a package-manager symlink.
+- `search_knowledge` now streams progress, propagates abort signals, and enforces timeouts so slow embedding/search calls do not leave the TUI indefinitely responding.
 
 ## [1.0.0] - 2026-05-22
 

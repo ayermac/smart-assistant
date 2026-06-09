@@ -8,6 +8,18 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { KnowledgeStore } from "../knowledge/types.js";
 
+export const DEFAULT_KNOWLEDGE_TOOL_TIMEOUT_MS = 45_000;
+
+export interface CreateSearchKnowledgeToolOptions {
+  timeoutMs?: number;
+}
+
+export function resolveKnowledgeToolTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const rawValue = env.SMART_ASSISTANT_KNOWLEDGE_TIMEOUT_MS ?? env.SMART_ASSISTANT_TOOL_TIMEOUT_MS;
+  const parsed = rawValue ? Number(rawValue) : DEFAULT_KNOWLEDGE_TOOL_TIMEOUT_MS;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_KNOWLEDGE_TOOL_TIMEOUT_MS;
+}
+
 /**
  * Parameters schema for search_knowledge tool.
  */
@@ -47,12 +59,85 @@ interface SearchKnowledgeDetails {
   fromCache: boolean;
 }
 
+function createCombinedSignal(parentSignal: AbortSignal | undefined, timeoutMs: number): {
+  signal: AbortSignal;
+  clear: () => void;
+  isTimedOut: () => boolean;
+} {
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    timeoutController.abort(new Error(`search_knowledge timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+
+  const signal = parentSignal
+    ? AbortSignal.any([parentSignal, timeoutController.signal])
+    : timeoutController.signal;
+
+  return {
+    signal,
+    clear: () => clearTimeout(timeoutId),
+    isTimedOut: () => timeoutController.signal.aborted,
+  };
+}
+
+function throwIfAborted(signal: AbortSignal | undefined, message = "search_knowledge was aborted"): void {
+  if (!signal?.aborted) {
+    return;
+  }
+
+  if (signal.reason instanceof Error) {
+    throw signal.reason;
+  }
+
+  throw new Error(message);
+}
+
+async function runSearchStep<T>(
+  label: string,
+  timeoutMs: number,
+  parentSignal: AbortSignal | undefined,
+  task: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const combined = createCombinedSignal(parentSignal, timeoutMs);
+  let cleanupAbortListener = () => {};
+
+  try {
+    throwIfAborted(combined.signal);
+    const abortPromise = new Promise<never>((_, reject) => {
+      const onAbort = () => {
+        reject(new Error(`${label} aborted`));
+      };
+
+      combined.signal.addEventListener("abort", onAbort, { once: true });
+      cleanupAbortListener = () => combined.signal.removeEventListener("abort", onAbort);
+    });
+
+    return await Promise.race([task(combined.signal), abortPromise]);
+  } catch (error) {
+    if (parentSignal?.aborted) {
+      throw new Error(`${label} aborted`);
+    }
+
+    if (combined.isTimedOut()) {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+    }
+
+    throw error;
+  } finally {
+    cleanupAbortListener();
+    combined.clear();
+  }
+}
+
 /**
  * Create the search_knowledge tool with injected KnowledgeStore.
  */
 export function createSearchKnowledgeTool(
-  store: KnowledgeStore
+  store: KnowledgeStore,
+  options?: CreateSearchKnowledgeToolOptions
 ): AgentTool<typeof SearchKnowledgeParameters, SearchKnowledgeDetails> {
+  const timeoutMs = options?.timeoutMs ?? resolveKnowledgeToolTimeoutMs();
+
   return {
     name: "search_knowledge",
     description:
@@ -63,7 +148,28 @@ export function createSearchKnowledgeTool(
     async execute(toolCallId, params, signal, onUpdate) {
       try {
         // Check if ingestion is needed and trigger it
-        if (await store.needsReindex()) {
+        onUpdate?.({
+          content: [
+            {
+              type: "text",
+              text: "Checking knowledge index...",
+            },
+          ],
+          details: {
+            results: [],
+            total: 0,
+            fromCache: false,
+          },
+        });
+
+        const needsReindex = await runSearchStep(
+          "Checking knowledge index",
+          timeoutMs,
+          signal,
+          () => store.needsReindex()
+        );
+
+        if (needsReindex) {
           // Stream progress update
           onUpdate?.({
             content: [
@@ -78,14 +184,40 @@ export function createSearchKnowledgeTool(
               fromCache: false,
             },
           });
-          await store.ingest();
+          await runSearchStep(
+            "Indexing knowledge base",
+            timeoutMs,
+            signal,
+            (stepSignal) => store.ingest({ signal: stepSignal })
+          );
         }
 
         // Perform search
-        const matches = await store.search(params.query, {
-          limit: params.limit,
-          tags: params.tags,
+        onUpdate?.({
+          content: [
+            {
+              type: "text",
+              text: "Searching knowledge base...",
+            },
+          ],
+          details: {
+            results: [],
+            total: 0,
+            fromCache: false,
+          },
         });
+
+        const matches = await runSearchStep(
+          "Searching knowledge base",
+          timeoutMs,
+          signal,
+          (stepSignal) =>
+            store.search(params.query, {
+              limit: params.limit,
+              tags: params.tags,
+              signal: stepSignal,
+            })
+        );
 
         // Handle empty results
         if (matches.length === 0) {

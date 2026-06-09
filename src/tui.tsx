@@ -178,6 +178,10 @@ function App({ options }: { options: CliOptions }) {
         appendLine("tool", `${event.toolName} started`);
         break;
 
+      case "tool_update":
+        appendLine("tool", `${event.toolName}: ${event.message}`);
+        break;
+
       case "tool_end":
         appendLine("tool", `${event.toolName} ${event.isError ? "failed" : "done"}`);
         break;

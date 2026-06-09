@@ -27,6 +27,25 @@ export interface AssistantControllerOptions {
   includeTestTools?: boolean;
 }
 
+function extractToolUpdateText(partialResult: unknown): string | null {
+  const content = (partialResult as { content?: unknown })?.content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const text = content
+    .map((item) => {
+      const textItem = item as { type?: unknown; text?: unknown };
+      return textItem.type === "text" && typeof textItem.text === "string"
+        ? textItem.text
+        : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  return text || null;
+}
+
 /**
  * System prompt for the smart-assistant.
  *
@@ -232,6 +251,14 @@ export class AssistantController {
 
       case "tool_execution_start": {
         this.onEvent({ type: "tool_start", toolName: event.toolName });
+        break;
+      }
+
+      case "tool_execution_update": {
+        const message = extractToolUpdateText(event.partialResult);
+        if (message) {
+          this.onEvent({ type: "tool_update", toolName: event.toolName, message });
+        }
         break;
       }
 

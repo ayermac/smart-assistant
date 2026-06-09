@@ -26,6 +26,7 @@ import type {
   ChunkMetadata,
   SourceMetadata,
   SearchOptions,
+  IngestOptions,
 } from "./types.js";
 
 /**
@@ -45,8 +46,37 @@ const RETRY_BASE_DELAY_MS = 1000;
 const MIN_VALID_MTIME_MS = 946684800000; // 2000-01-01T00:00:00.000Z
 const MTIME_FUTURE_TOLERANCE_MS = 60_000;
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("Knowledge operation aborted"));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error("Knowledge operation aborted"));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) {
+    return;
+  }
+
+  throw new Error("Knowledge operation aborted");
 }
 
 function escapeSqlString(value: string): string {
@@ -400,11 +430,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   /**
    * Ingest files from the knowledge source directory.
    */
-  async ingest(): Promise<KnowledgeManifest> {
+  async ingest(options?: IngestOptions): Promise<KnowledgeManifest> {
+    throwIfAborted(options?.signal);
     const sourceFiles = await this.scanSourceFiles();
 
     const indexedPaths = await this.getIndexedSourcePaths();
     for (const sourcePath of indexedPaths) {
+      throwIfAborted(options?.signal);
       try {
         await this.deleteSourcePath(sourcePath);
       } catch (error) {
@@ -413,8 +445,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     }
 
     for (const sourceFile of sourceFiles) {
+      throwIfAborted(options?.signal);
       try {
-        await this.indexFile(sourceFile.absolutePath);
+        await this.indexFile(sourceFile.absolutePath, { signal: options?.signal });
       } catch (error) {
         console.warn(`Failed to ingest ${sourceFile.path}: ${error}`);
       }
@@ -439,11 +472,12 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Search knowledge chunks using hybrid retrieval (vector + BM25 + RRF fusion).
    */
   async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
+    throwIfAborted(options?.signal);
     const table = this.ensureTable();
 
     // Trigger ingestion if needed
     if (await this.needsReindex()) {
-      await this.ingest();
+      await this.ingest({ signal: options?.signal });
     }
 
     // Empty query returns empty array
@@ -454,7 +488,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const limit = options?.limit ?? 5;
 
     // Generate embedding for query
-    const queryVector = await getEmbedding(query, this.embeddingConfig);
+    const queryVector = await getEmbedding(query, this.embeddingConfig, { signal: options?.signal });
+    throwIfAborted(options?.signal);
 
     // Vector search (top 20) - explicitly specify 'vector' column since table has multiple vector columns
     let vectorSearchQuery = table.vectorSearch(queryVector).column("vector").limit(20);
@@ -511,7 +546,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const candidates = rrfFusion(vectorMatches, bm25Results, { topN: 20 });
 
     // Rerank candidates to get final results
-    const reranked = await this.reranker.rerank(query, candidates, { topN: limit });
+    const reranked = await this.reranker.rerank(query, candidates, { topN: limit, signal: options?.signal });
 
     // Map reranked results to KnowledgeMatch[]
     // We need to re-fetch full chunk data for the reranked results
@@ -731,7 +766,8 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Index a single file.
    * Reads file content, chunks it, generates embeddings, and stores in LanceDB.
    */
-  async indexFile(filePath: string): Promise<void> {
+  async indexFile(filePath: string, options?: IngestOptions): Promise<void> {
+    throwIfAborted(options?.signal);
     const table = this.ensureTable();
 
     // Check schema for optional fields
@@ -806,19 +842,20 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       let imageVectorsFailed = 0;
 
       for (let i = 0; i < chunks.length; i++) {
+        throwIfAborted(options?.signal);
         const chunk = chunks[i];
 
         try {
           // Add delay between chunks for rate limiting (skip first chunk)
           if (i > 0) {
-            await delay(EMBED_DELAY_MS);
+            await delay(EMBED_DELAY_MS, options?.signal);
           }
 
           // Get embedding with retry logic for rate limiting
           let vector: number[] | null = null;
           for (let retry = 0; retry < MAX_RETRIES; retry++) {
             try {
-              vector = await getEmbedding(chunk.text, this.embeddingConfig);
+              vector = await getEmbedding(chunk.text, this.embeddingConfig, { signal: options?.signal });
               break;
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error);
@@ -826,7 +863,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
                 // Rate limit - exponential backoff
                 const backoffDelay = RETRY_BASE_DELAY_MS * Math.pow(2, retry);
                 console.warn(`Rate limit hit, retrying in ${backoffDelay}ms (attempt ${retry + 1}/${MAX_RETRIES})`);
-                await delay(backoffDelay);
+                await delay(backoffDelay, options?.signal);
                 continue;
               }
               throw error;
@@ -847,10 +884,11 @@ export class VectorKnowledgeStore implements KnowledgeStore {
               const image = chunk.images![0];
               const base64Image = await imageToBase64(image.path);
               if (base64Image) {
-                await delay(EMBED_DELAY_MS); // Delay before multimodal embedding
+                await delay(EMBED_DELAY_MS, options?.signal); // Delay before multimodal embedding
                 imageVector = await getMultimodalEmbedding(
                   { text: chunk.text, image: base64Image },
-                  this.embeddingConfig
+                  this.embeddingConfig,
+                  { signal: options?.signal }
                 );
               } else {
                 imageVectorsFailed++;
@@ -893,6 +931,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
           await table.add([record]);
         } catch (error) {
+          if (options?.signal?.aborted) {
+            throw error;
+          }
           console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
         }
       }

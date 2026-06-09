@@ -91,6 +91,9 @@ async function runInteractive(options: CliOptions): Promise<void> {
       case "tool_start":
         stdout.write(`\n[Tool: ${event.toolName}]`);
         break;
+      case "tool_update":
+        stdout.write(`\n[Tool: ${event.toolName}] ${event.message}\n`);
+        break;
       case "tool_end":
         if (event.isError) {
           stdout.write(` ${RED}failed${RESET}\n`);

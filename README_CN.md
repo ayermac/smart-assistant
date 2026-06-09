@@ -145,8 +145,10 @@ smart-assistant-tui
 | `OPENAI_BASE_URL` | API 基础 URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_BASE_URL` | 嵌入 API URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_MODEL` | 嵌入模型（2048 维） | `doubao-embedding-vision` |
+| `EMBEDDING_TIMEOUT_MS` | 嵌入 API 请求超时 | `30000` |
 | `SMART_ASSISTANT_DATA_DIR` | 本地数据目录 | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | 知识源目录 | `.smart-assistant/knowledge-sources` |
+| `SMART_ASSISTANT_KNOWLEDGE_TIMEOUT_MS` | `search_knowledge` 单步超时 | `45000` |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault 路径（可选） | *未设置* |
 | `RERANK_ENABLED` | 启用 Rerank 重排序 | `false` |
 | `RERANK_PROVIDER` | Rerank 提供商（`cohere` 或 `noop`） | `cohere` |
@@ -416,6 +418,7 @@ npm test           # 运行测试
 - 修复旧 knowledge 表 schema 不兼容导致 LanceDB `Panic in async function` 的问题。
 - 修复 TUI 初始化期间的输入和退出行为；vault 同步仍在运行时，`/exit` 和 Ctrl+C 也可退出。
 - 修复通过包管理器符号链接运行 `smart-assistant` / `smart-assistant-tui` 时入口没有执行的问题。
+- 为 `search_knowledge` 增加中断传播、进度提示和超时，避免 embedding/search 调用过慢时 TUI 一直停在 responding。
 
 **文档：**
 - 补充通过编译后的 `dist` 入口和安装后的 CLI 二进制进行生产使用的说明。

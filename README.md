@@ -145,8 +145,10 @@ Production notes:
 | `OPENAI_BASE_URL` | API base URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_BASE_URL` | Embedding API URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_MODEL` | Embedding model (2048-dim) | `doubao-embedding-vision` |
+| `EMBEDDING_TIMEOUT_MS` | Embedding API request timeout | `30000` |
 | `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | Knowledge source directory | `.smart-assistant/knowledge-sources` |
+| `SMART_ASSISTANT_KNOWLEDGE_TIMEOUT_MS` | `search_knowledge` step timeout | `45000` |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault path (optional) | *not set* |
 | `RERANK_ENABLED` | Enable Rerank re-ranking | `false` |
 | `RERANK_PROVIDER` | Rerank provider (`cohere` or `noop`) | `cohere` |
@@ -416,6 +418,7 @@ npm test           # Run tests
 - Repaired incompatible legacy knowledge table schemas that could trigger LanceDB `Panic in async function`.
 - Fixed TUI input and exit behavior during initialization; `/exit` and Ctrl+C work while vault sync is still running.
 - Fixed installed npm binary execution when package-manager bin links are symlinks.
+- Added abort propagation, progress updates, and timeouts for `search_knowledge` so slow embedding/search calls do not leave the TUI indefinitely responding.
 
 **Docs:**
 - Documented production usage through compiled `dist` entry points and installed CLI binaries.

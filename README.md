@@ -166,8 +166,8 @@ query → vector search + BM25 → RRF fusion → [Rerank] → top N results
 |--------|------------|--------|
 | Markdown | `.md`, `.markdown` | Built-in parser |
 | Text | `.txt` | Built-in parser |
-| PDF | `.pdf` | LangChain PDFLoader (pdf-parse) |
-| Word | `.docx` | LangChain DocxLoader (mammoth) |
+| PDF | `.pdf` | Built-in loader (pdf-parse) |
+| Word | `.docx` | Built-in loader (mammoth) |
 | Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | Multimodal embedding |
 
 ### Text Processing
@@ -256,7 +256,7 @@ To verify incremental startup behavior, run `npm run tui` or `npm run dev` twice
 | Agent Core | `pi-agent-core` + `pi-ai` |
 | Vector DB | LanceDB (embedded, no server) |
 | Embeddings | Doubao embedding (2048-dim) |
-| Document Parsing | LangChain loaders (PDF, DOCX) |
+| Document Parsing | Built-in loaders with pdf-parse and mammoth |
 | Re-ranking | Cohere Rerank API |
 | Storage | Apache Arrow |
 
@@ -361,8 +361,8 @@ npm test           # Run tests
 ### v2.3 (2026-05-26)
 
 **New Features:**
-- 📄 PDF document support (via LangChain PDFLoader)
-- 📄 DOCX document support (via LangChain DocxLoader)
+- 📄 PDF document support (via pdf-parse)
+- 📄 DOCX document support (via mammoth)
 - 🎯 Optional Rerank re-ranking (Cohere API)
 - 🖼️ Fixed image embedding retrieval bug
 
@@ -397,5 +397,4 @@ MIT © 2024
 - [pi-agent-core](https://github.com/earendil-works/pi-agent-core) - Agent runtime
 - [LanceDB](https://lancedb.com/) - Embedded vector database
 - [Apache Arrow](https://arrow.apache.org/) - Columnar data format
-- [LangChain](https://js.langchain.com/) - Document loaders
 - [Cohere](https://cohere.com/) - Rerank API

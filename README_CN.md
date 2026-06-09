@@ -166,8 +166,8 @@ assistant> 根据 `api-design.md > RESTful原则`，你的笔记中提到...
 |------|--------|--------|
 | Markdown | `.md`, `.markdown` | 内置解析器 |
 | 文本 | `.txt` | 内置解析器 |
-| PDF | `.pdf` | LangChain PDFLoader (pdf-parse) |
-| Word | `.docx` | LangChain DocxLoader (mammoth) |
+| PDF | `.pdf` | 内置加载器 (pdf-parse) |
+| Word | `.docx` | 内置加载器 (mammoth) |
 | 图片 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | 多模态嵌入 |
 
 ### 文本处理
@@ -256,7 +256,7 @@ OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 | Agent 核心 | `pi-agent-core` + `pi-ai` |
 | 向量数据库 | LanceDB（嵌入式，无需服务器） |
 | 嵌入模型 | 豆包嵌入（2048 维） |
-| 文档解析 | LangChain loaders (PDF, DOCX) |
+| 文档解析 | 基于 pdf-parse 和 mammoth 的内置加载器 |
 | 重排序 | Cohere Rerank API |
 | 存储 | Apache Arrow |
 
@@ -361,8 +361,8 @@ npm test           # 运行测试
 ### v2.3 (2026-05-26)
 
 **新功能：**
-- 📄 PDF 文档支持（通过 LangChain PDFLoader）
-- 📄 DOCX 文档支持（通过 LangChain DocxLoader）
+- 📄 PDF 文档支持（通过 pdf-parse）
+- 📄 DOCX 文档支持（通过 mammoth）
 - 🎯 可选 Rerank 重排序（Cohere API）
 - 🖼️ 修复图片嵌入检索 bug
 
@@ -397,5 +397,4 @@ MIT © 2024
 - [pi-agent-core](https://github.com/earendil-works/pi-agent-core) - Agent 运行时
 - [LanceDB](https://lancedb.com/) - 嵌入式向量数据库
 - [Apache Arrow](https://arrow.apache.org/) - 列式数据格式
-- [LangChain](https://js.langchain.com/) - 文档加载器
 - [Cohere](https://cohere.com/) - Rerank API

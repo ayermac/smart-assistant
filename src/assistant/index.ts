@@ -3,4 +3,4 @@
  */
 
 export type { AssistantEvent, TextDeltaEvent, ErrorEvent, ToolStartEvent, ToolEndEvent } from "./types.js";
-export { AssistantController } from "./controller.js";
+export { AssistantController, type AssistantControllerOptions } from "./controller.js";

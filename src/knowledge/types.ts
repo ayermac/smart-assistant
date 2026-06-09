@@ -53,6 +53,14 @@ export interface SearchOptions {
   tags?: string[];
   limit?: number;
   sourcePath?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Options for knowledge ingestion operations.
+ */
+export interface IngestOptions {
+  signal?: AbortSignal;
 }
 
 /**
@@ -100,7 +108,7 @@ export interface KnowledgeStore {
   init?(): Promise<void>;
 
   /** Ingest files from the knowledge source directory. */
-  ingest(): Promise<KnowledgeManifest>;
+  ingest(options?: IngestOptions): Promise<KnowledgeManifest>;
 
   /** Search knowledge chunks matching a query. */
   search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]>;

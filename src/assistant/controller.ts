@@ -11,8 +11,40 @@ import { createAllTools } from "../tools/index.js";
 import { VectorMemoryStore, createDefaultEmbeddingConfig } from "../memory/index.js";
 import { VectorKnowledgeStore } from "../knowledge/index.js";
 import { FilePlanStore } from "../planning/index.js";
+import {
+  DEFAULT_SMART_ASSISTANT_PROVIDER,
+  SMART_ASSISTANT_PROVIDER_ENV,
+  resolveDataPaths,
+  type DataPaths,
+} from "../config.js";
 import type { SessionStore } from "../session/types.js";
 import type { AssistantEvent } from "./types.js";
+
+export interface AssistantControllerOptions {
+  vaultPath?: string;
+  dataPaths?: DataPaths;
+  knowledgeSourceDir?: string;
+  includeTestTools?: boolean;
+}
+
+function extractToolUpdateText(partialResult: unknown): string | null {
+  const content = (partialResult as { content?: unknown })?.content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const text = content
+    .map((item) => {
+      const textItem = item as { type?: unknown; text?: unknown };
+      return textItem.type === "text" && typeof textItem.text === "string"
+        ? textItem.text
+        : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  return text || null;
+}
 
 /**
  * System prompt for the smart-assistant.
@@ -109,30 +141,34 @@ export class AssistantController {
     initialMessages: AgentMessage[],
     sessionStore: SessionStore,
     sessionId: string,
-    options?: { vaultPath?: string }
+    options?: AssistantControllerOptions
   ): Promise<AssistantController> {
     // Validate API key based on provider
-    const provider = process.env.SMART_ASSISTANT_PROVIDER?.trim() || "anthropic";
+    const provider = process.env[SMART_ASSISTANT_PROVIDER_ENV]?.trim() || DEFAULT_SMART_ASSISTANT_PROVIDER;
     const apiKeyEnv = provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 
     if (!process.env[apiKeyEnv]) {
       throw new Error(`${apiKeyEnv} environment variable is required for provider "${provider}"`);
     }
 
+    const dataPaths = options?.dataPaths ?? resolveDataPaths();
+
     // Create and initialize memory store (vector-based)
     const embeddingConfig = createDefaultEmbeddingConfig();
-    const memoryStore = new VectorMemoryStore(embeddingConfig);
+    const memoryStore = new VectorMemoryStore(embeddingConfig, dataPaths.vectors);
     await memoryStore.init();
 
     // Create and initialize knowledge store (vector-based)
     const knowledgeStore = new VectorKnowledgeStore({
       embeddingConfig,
+      dbPath: dataPaths.vectors,
+      sourceDir: options?.vaultPath ?? options?.knowledgeSourceDir,
       vaultPath: options?.vaultPath,
     });
     await knowledgeStore.init();
 
     // Create plan store
-    const planStore = new FilePlanStore();
+    const planStore = new FilePlanStore(dataPaths.plans);
 
     // Initialize agent with memory, knowledge, and planning tools
     const agent = new Agent({
@@ -140,7 +176,10 @@ export class AssistantController {
         systemPrompt: SYSTEM_PROMPT,
         model: getDefaultModel(),
         thinkingLevel: "off",
-        tools: createAllTools(memoryStore, knowledgeStore, planStore),
+        tools: createAllTools(memoryStore, knowledgeStore, planStore, {
+          includeTestTools:
+            options?.includeTestTools ?? process.env.SMART_ASSISTANT_ENABLE_TEST_TOOLS === "true",
+        }),
         messages: initialMessages,
       },
     });
@@ -212,6 +251,14 @@ export class AssistantController {
 
       case "tool_execution_start": {
         this.onEvent({ type: "tool_start", toolName: event.toolName });
+        break;
+      }
+
+      case "tool_execution_update": {
+        const message = extractToolUpdateText(event.partialResult);
+        if (message) {
+          this.onEvent({ type: "tool_update", toolName: event.toolName, message });
+        }
         break;
       }
 

@@ -57,8 +57,26 @@ COHERE_API_KEY=your-cohere-api-key
 
 ### 3. Run
 
+Plain readline CLI:
+
 ```bash
 npm run dev
+```
+
+Ink terminal UI:
+
+```bash
+npm run tui
+```
+
+The TUI accepts keyboard input as soon as the prompt is visible. During startup vault sync or runtime initialization, `/exit` and Ctrl+C still exit the process; non-command prompts submitted before the assistant is ready show `Assistant is still initializing.`
+
+After building, the package exposes both binaries:
+
+```bash
+npm run build
+node dist/cli.js --help
+node dist/tui.js --help
 ```
 
 ### 4. Try It
@@ -70,6 +88,48 @@ assistant> 好的，我已经记住啦，你的名字是小C。
 you> 我叫什么名字
 assistant> 根据我存储的记忆，你的名字是小C。
 ```
+
+---
+
+## 🚢 Production Usage
+
+For day-to-day use, build once and run the compiled entry points instead of `npm run` scripts:
+
+```bash
+npm install
+npm run build
+node dist/cli.js
+node dist/tui.js
+```
+
+To expose stable shell commands on your machine, install the built checkout once:
+
+```bash
+npm install
+npm run build
+npm install -g .
+```
+
+Then run the assistant without `npm`:
+
+```bash
+smart-assistant
+smart-assistant-tui
+```
+
+Use explicit local paths for persistent data and your Obsidian vault:
+
+```bash
+export SMART_ASSISTANT_DATA_DIR="$HOME/.smart-assistant"
+export OBSIDIAN_VAULT_PATH="$HOME/Obsidian/SecondBrain"
+smart-assistant-tui
+```
+
+Production notes:
+- `npm run dev` and `npm run tui` are development shortcuts.
+- `smart-assistant` starts the plain readline CLI.
+- `smart-assistant-tui` starts the Ink terminal UI.
+- Rebuild with `npm run build` after pulling code changes; reinstall only if the global command link is missing or points elsewhere.
 
 ---
 
@@ -85,8 +145,10 @@ assistant> 根据我存储的记忆，你的名字是小C。
 | `OPENAI_BASE_URL` | API base URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_BASE_URL` | Embedding API URL | `https://ark.cn-beijing.volces.com/api/coding/v3` |
 | `EMBEDDING_MODEL` | Embedding model (2048-dim) | `doubao-embedding-vision` |
+| `EMBEDDING_TIMEOUT_MS` | Embedding API request timeout | `30000` |
 | `SMART_ASSISTANT_DATA_DIR` | Local data directory | `.smart-assistant` |
 | `SMART_ASSISTANT_KNOWLEDGE_DIR` | Knowledge source directory | `.smart-assistant/knowledge-sources` |
+| `SMART_ASSISTANT_KNOWLEDGE_TIMEOUT_MS` | `search_knowledge` step timeout | `45000` |
 | `OBSIDIAN_VAULT_PATH` | Obsidian vault path (optional) | *not set* |
 | `RERANK_ENABLED` | Enable Rerank re-ranking | `false` |
 | `RERANK_PROVIDER` | Rerank provider (`cohere` or `noop`) | `cohere` |
@@ -150,8 +212,8 @@ query → vector search + BM25 → RRF fusion → [Rerank] → top N results
 |--------|------------|--------|
 | Markdown | `.md`, `.markdown` | Built-in parser |
 | Text | `.txt` | Built-in parser |
-| PDF | `.pdf` | LangChain PDFLoader (pdf-parse) |
-| Word | `.docx` | LangChain DocxLoader (mammoth) |
+| PDF | `.pdf` | Built-in loader (pdf-parse) |
+| Word | `.docx` | Built-in loader (mammoth) |
 | Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | Multimodal embedding |
 
 ### Text Processing
@@ -205,6 +267,8 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 - **Images**: Supports multimodal embedding for images in vault
 - **Tags**: Extracts `#tags` and frontmatter tags for metadata
 
+Startup sync is incremental. When upgrading from an older local LanceDB table, the first run may reindex existing vault files once to backfill reliable millisecond modification metadata. Later starts should report the vault is already up to date unless files changed.
+
 ### Obsidian-Specific Parsing
 
 | Feature | Support |
@@ -222,7 +286,11 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 3. File watcher starts monitoring changes
 4. Create/modify/delete notes in Obsidian
 5. Changes are indexed automatically
-6. Query your vault in CLI
+6. Query your vault in CLI or TUI
+
+To verify incremental startup behavior, run `npm run tui` or `npm run dev` twice without editing the vault. The first run after an upgrade can show `Reindexing` while metadata is repaired; the second unchanged run should show `Vault already up to date`.
+
+If the TUI is still initializing while vault sync runs, the prompt remains interactive. Use `/exit` or Ctrl+C to leave without waiting for initialization to finish.
 
 ---
 
@@ -236,7 +304,7 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 | Agent Core | `pi-agent-core` + `pi-ai` |
 | Vector DB | LanceDB (embedded, no server) |
 | Embeddings | Doubao embedding (2048-dim) |
-| Document Parsing | LangChain loaders (PDF, DOCX) |
+| Document Parsing | Built-in loaders with pdf-parse and mammoth |
 | Re-ranking | Cohere Rerank API |
 | Storage | Apache Arrow |
 
@@ -246,6 +314,8 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 smart-assistant/
 ├── src/
 │   ├── cli.ts              # CLI entry point
+│   ├── tui.tsx             # Ink terminal UI entry point
+│   ├── runtime.ts          # Shared CLI/TUI runtime helpers
 │   ├── assistant/          # Agent controller
 │   ├── memory/             # Long-term memory (LanceDB)
 │   ├── knowledge/          # Knowledge RAG (LanceDB)
@@ -315,10 +385,11 @@ npm run eval  # Run evaluation suite
 
 ```bash
 npm run dev        # Development mode (hot reload)
+npm run tui        # Ink terminal UI
 npm run build      # Production build
 npm run typecheck  # Type checking
 npm run eval       # Run evaluations
-npm run test       # Run tests
+npm test           # Run tests
 ```
 
 ---
@@ -329,17 +400,36 @@ npm run test       # Run tests
 - Images require `doubao-embedding-vision` or compatible multimodal embedding model
 - No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)
-- CLI-only interface (Web UI planned for v3)
+- Terminal-only interfaces: readline CLI and Ink TUI. Web UI is planned for v3.
 
 ---
 
 ## 📝 Changelog
 
+### Unreleased (2026-06-09)
+
+**New Features:**
+- Added Ink terminal UI with `smart-assistant-tui` binary.
+- Added shared CLI/TUI runtime setup for sessions, data paths, and vault sync.
+
+**Fixes:**
+- Fixed `npm install` dependency resolution by aligning `apache-arrow` with LanceDB and removing unused LangChain dependencies.
+- Stabilized Obsidian startup sync with reliable millisecond mtime metadata.
+- Repaired incompatible legacy knowledge table schemas that could trigger LanceDB `Panic in async function`.
+- Fixed TUI input and exit behavior during initialization; `/exit` and Ctrl+C work while vault sync is still running.
+- Fixed installed npm binary execution when package-manager bin links are symlinks.
+- Added abort propagation, progress updates, and timeouts for `search_knowledge` so slow embedding/search calls do not leave the TUI indefinitely responding.
+- Improved TUI transcript formatting with fixed prefixes, wrapped assistant output, cleaner citations, and indented list continuations.
+
+**Docs:**
+- Documented production usage through compiled `dist` entry points and installed CLI binaries.
+- Documented TUI startup input behavior and incremental Obsidian sync verification.
+
 ### v2.3 (2026-05-26)
 
 **New Features:**
-- 📄 PDF document support (via LangChain PDFLoader)
-- 📄 DOCX document support (via LangChain DocxLoader)
+- 📄 PDF document support (via pdf-parse)
+- 📄 DOCX document support (via mammoth)
 - 🎯 Optional Rerank re-ranking (Cohere API)
 - 🖼️ Fixed image embedding retrieval bug
 
@@ -374,5 +464,4 @@ MIT © 2024
 - [pi-agent-core](https://github.com/earendil-works/pi-agent-core) - Agent runtime
 - [LanceDB](https://lancedb.com/) - Embedded vector database
 - [Apache Arrow](https://arrow.apache.org/) - Columnar data format
-- [LangChain](https://js.langchain.com/) - Document loaders
 - [Cohere](https://cohere.com/) - Rerank API

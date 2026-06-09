@@ -27,6 +27,8 @@ export interface RerankOptions {
   topN?: number;
   /** Minimum relevance score threshold (0-1) */
   minScore?: number;
+  /** Abort signal for cancelling network-backed rerankers */
+  signal?: AbortSignal;
 }
 
 /**
@@ -57,4 +59,6 @@ export interface CohereRerankerConfig {
   model?: string;
   /** Base URL for API (default: Cohere's API) */
   baseUrl?: string;
+  /** Request timeout in milliseconds (default: 30000) */
+  timeoutMs?: number;
 }

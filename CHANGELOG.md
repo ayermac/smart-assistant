@@ -2,6 +2,22 @@
 
 All notable changes to Smart Assistant will be documented in this file.
 
+## [Unreleased] - 2026-06-09
+
+### Added
+- Ink terminal UI with the `smart-assistant-tui` binary.
+- Shared CLI/TUI runtime setup for sessions, data paths, and Obsidian vault sync.
+- Production usage documentation for compiled `dist` entry points and installed CLI binaries.
+
+### Fixed
+- `npm install` dependency resolution by aligning `apache-arrow` with LanceDB and removing unused LangChain dependencies.
+- Obsidian startup sync mtime handling so unchanged files are skipped after metadata repair.
+- Legacy knowledge table schema repair for `lastModifiedMs`, avoiding LanceDB `Panic in async function` failures.
+- TUI input and exit behavior during initialization; `/exit` and Ctrl+C now work while vault sync is still running.
+- Installed npm binary execution when `smart-assistant` or `smart-assistant-tui` is reached through a package-manager symlink.
+- `search_knowledge` now streams progress, propagates abort signals, and enforces timeouts so slow embedding/search calls do not leave the TUI indefinitely responding.
+- TUI transcript rendering now uses fixed prefixes, width-aware wrapping, cleaner local-knowledge citations, and indented list continuations.
+
 ## [1.0.0] - 2026-05-22
 
 ### Added

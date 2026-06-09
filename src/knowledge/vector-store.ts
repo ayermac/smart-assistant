@@ -6,16 +6,15 @@
  */
 
 import * as lancedb from "@lancedb/lancedb";
-import { type Vector, Field, FixedSizeList, Float32, Int32, List, Schema, Utf8 } from "apache-arrow";
-import { randomUUID } from "node:crypto";
+import { type Vector, Field, FixedSizeList, Float32, Float64, Int32, List, Schema, Utf8 } from "apache-arrow";
 import { mkdir, readdir, stat, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { resolveKnowledgeSourceDir } from "../config.js";
+import { resolveDataPaths, resolveKnowledgeSourceDir } from "../config.js";
 import { getEmbedding, createDefaultEmbeddingConfig, type EmbeddingConfig } from "../memory/embedding.js";
 import { chunkFile, chunkBinaryFile, isSupportedExtension, isBinaryFormat } from "./chunker.js";
 import { cleanText, extractFrontmatter } from "./cleaner.js";
 import { BM25Retriever, type BM25Match } from "./bm25.js";
-import { rrfFusion, type VectorMatch, type FusedResult } from "./fusion.js";
+import { rrfFusion, type VectorMatch } from "./fusion.js";
 import { getMultimodalEmbedding, imageToBase64 } from "./multimodal-embedding.js";
 import type { Reranker } from "./rerank/index.js";
 import { noopReranker, createRerankerFromEnv } from "./rerank/index.js";
@@ -27,7 +26,7 @@ import type {
   ChunkMetadata,
   SourceMetadata,
   SearchOptions,
-  ImageReference,
+  IngestOptions,
 } from "./types.js";
 
 /**
@@ -44,9 +43,98 @@ const MAX_RETRIES = 3;
  * Base delay for exponential backoff on rate limit errors.
  */
 const RETRY_BASE_DELAY_MS = 1000;
+const MIN_VALID_MTIME_MS = 946684800000; // 2000-01-01T00:00:00.000Z
+const MTIME_FUTURE_TOLERANCE_MS = 60_000;
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("Knowledge operation aborted"));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error("Knowledge operation aborted"));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) {
+    return;
+  }
+
+  throw new Error("Knowledge operation aborted");
+}
+
+function escapeSqlString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+export function getStoredMtimeMs(lastModifiedMs?: number, lastModified?: number): number {
+  if (typeof lastModifiedMs === "number" && Number.isFinite(lastModifiedMs) && lastModifiedMs >= MIN_VALID_MTIME_MS) {
+    return lastModifiedMs;
+  }
+
+  // Compatibility with the short-lived Float64 lastModified schema that stored mtimeMs directly.
+  if (typeof lastModified === "number" && Number.isFinite(lastModified) && lastModified >= MIN_VALID_MTIME_MS) {
+    return lastModified;
+  }
+
+  return 0;
+}
+
+export function isUsableStoredMtime(storedMtimeMs: number | undefined, currentMtimeMs: number): boolean {
+  return (
+    storedMtimeMs !== undefined &&
+    Number.isFinite(storedMtimeMs) &&
+    storedMtimeMs >= MIN_VALID_MTIME_MS &&
+    storedMtimeMs <= currentMtimeMs + MTIME_FUTURE_TOLERANCE_MS
+  );
+}
+
+function createKnowledgeTableSchema(): Schema {
+  return new Schema([
+    new Field("id", new Utf8(), false),
+    new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
+    new Field("text", new Utf8(), false),
+    new Field("sourcePath", new Utf8(), false),
+    new Field("headingText", new Utf8(), false),
+    new Field("headingLevel", new Int32(), false),
+    new Field("tags", new List(new Field("item", new Utf8()))),
+    new Field("createdAt", new Utf8(), false),
+    new Field("lastModified", new Float64(), true), // file mtime seconds, nullable
+    new Field("lastModifiedMs", new Float64(), true), // file mtime milliseconds, nullable
+    new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
+    new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
+  ]);
+}
+
+export function hasCompatibleKnowledgeMtimeSchema(schema: Schema): boolean {
+  const fields = new Map(schema.fields.map((field) => [field.name, field]));
+  const lastModified = fields.get("lastModified");
+  const lastModifiedMs = fields.get("lastModifiedMs");
+
+  return (
+    lastModified !== undefined &&
+    String(lastModified.type) === "Float64" &&
+    lastModified.nullable === true &&
+    lastModifiedMs !== undefined &&
+    String(lastModifiedMs.type) === "Float64" &&
+    lastModifiedMs.nullable === true
+  );
 }
 
 /**
@@ -106,7 +194,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
   constructor(config?: VectorKnowledgeStoreConfig) {
     this.embeddingConfig = config?.embeddingConfig ?? createDefaultEmbeddingConfig();
-    this.dbPath = config?.dbPath ?? ".smart-assistant/vectors";
+    this.dbPath = config?.dbPath ?? resolveDataPaths().vectors;
     this.sourceDir = config?.sourceDir ?? resolveKnowledgeSourceDir();
     this.vaultPath = config?.vaultPath;
 
@@ -138,22 +226,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       await this.migrateSchema();
     } else {
       // Create table with explicit schema
-      const schema = new Schema([
-        new Field("id", new Utf8(), false),
-        new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
-        new Field("text", new Utf8(), false),
-        new Field("sourcePath", new Utf8(), false),
-        new Field("headingText", new Utf8(), false),
-        new Field("headingLevel", new Int32(), false),
-        new Field("tags", new List(new Field("item", new Utf8()))),
-        new Field("createdAt", new Utf8(), false),
-        // New columns for Phase 10 (optional)
-        new Field("lastModified", new Int32(), true), // file mtime, nullable
-        new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
-        new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
-      ]);
-
-      this.table = await this.db.createEmptyTable("knowledge", schema);
+      this.table = await this.db.createEmptyTable("knowledge", createKnowledgeTableSchema());
     }
   }
 
@@ -175,8 +248,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     const existingFields = new Set(schema.fields.map((f) => f.name));
 
+    if (!hasCompatibleKnowledgeMtimeSchema(schema)) {
+      await this.recreateKnowledgeTable("Migrated knowledge table schema: recreated to repair mtime columns");
+      return;
+    }
+
     // Check if migration is needed
-    if (existingFields.has("lastModified") && existingFields.has("linkedNotes")) {
+    if (existingFields.has("lastModified") && existingFields.has("lastModifiedMs") && existingFields.has("linkedNotes")) {
       // Schema is up to date
       return;
     }
@@ -186,30 +264,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const count = await table.countRows();
     if (count === 0) {
       // Table is empty, drop and recreate with full schema
-      try {
-        await this.db!.dropTable("knowledge");
-
-        // Recreate with full schema
-        const newSchema = new Schema([
-          new Field("id", new Utf8(), false),
-          new Field("vector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32()))),
-          new Field("text", new Utf8(), false),
-          new Field("sourcePath", new Utf8(), false),
-          new Field("headingText", new Utf8(), false),
-          new Field("headingLevel", new Int32(), false),
-          new Field("tags", new List(new Field("item", new Utf8()))),
-          new Field("createdAt", new Utf8(), false),
-          // New columns for Phase 10 (optional)
-          new Field("lastModified", new Int32(), true), // file mtime, nullable
-          new Field("linkedNotes", new List(new Field("item", new Utf8())), true),
-          new Field("imageVector", new FixedSizeList(VECTOR_DIMENSIONS, new Field("item", new Float32())), true),
-        ]);
-
-        this.table = await this.db!.createEmptyTable("knowledge", newSchema);
-        console.log("Migrated knowledge table schema: recreated with new columns");
-      } catch (error) {
-        console.warn(`Failed to recreate table: ${error}`);
-      }
+      await this.recreateKnowledgeTable("Migrated knowledge table schema: recreated with new columns");
       return;
     }
 
@@ -218,6 +273,10 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     if (!existingFields.has("lastModified")) {
       columnsToAdd.push({ name: "lastModified", valueSql: "0" });
+    }
+
+    if (!existingFields.has("lastModifiedMs")) {
+      columnsToAdd.push({ name: "lastModifiedMs", valueSql: "0.0" });
     }
 
     if (!existingFields.has("linkedNotes")) {
@@ -235,11 +294,47 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     }
   }
 
+  private async recreateKnowledgeTable(message: string): Promise<void> {
+    try {
+      await this.db!.dropTable("knowledge");
+      this.table = await this.db!.createEmptyTable("knowledge", createKnowledgeTableSchema());
+      this.manifest = null;
+      this.bm25 = null;
+      this.bm25NeedsRebuild = true;
+      console.log(message);
+    } catch (error) {
+      console.warn(`Failed to recreate table: ${error}`);
+    }
+  }
+
   private ensureTable(): lancedb.Table {
     if (!this.table) {
       throw new Error("VectorKnowledgeStore not initialized. Call init() first.");
     }
     return this.table;
+  }
+
+  private async getIndexedSourcePaths(): Promise<string[]> {
+    const table = this.ensureTable();
+    const rows = await table.query()
+      .select(["sourcePath"])
+      .toArray();
+
+    const paths = new Set<string>();
+    for (const row of rows) {
+      const record = row as { sourcePath?: string };
+      if (record.sourcePath) {
+        paths.add(record.sourcePath);
+      }
+    }
+
+    return Array.from(paths);
+  }
+
+  private async deleteSourcePath(sourcePath: string): Promise<void> {
+    const table = this.ensureTable();
+    await table.delete(`sourcePath = '${escapeSqlString(sourcePath)}'`);
+    this.manifest = null;
   }
 
   /**
@@ -335,109 +430,37 @@ export class VectorKnowledgeStore implements KnowledgeStore {
   /**
    * Ingest files from the knowledge source directory.
    */
-  async ingest(): Promise<KnowledgeManifest> {
-    const table = this.ensureTable();
+  async ingest(options?: IngestOptions): Promise<KnowledgeManifest> {
+    throwIfAborted(options?.signal);
     const sourceFiles = await this.scanSourceFiles();
 
-    const allChunks: ChunkMetadata[] = [];
-    const sources: SourceMetadata[] = [];
+    const indexedPaths = await this.getIndexedSourcePaths();
+    for (const sourcePath of indexedPaths) {
+      throwIfAborted(options?.signal);
+      try {
+        await this.deleteSourcePath(sourcePath);
+      } catch (error) {
+        console.warn(`Failed to remove existing chunks for ${sourcePath}: ${error}`);
+      }
+    }
 
     for (const sourceFile of sourceFiles) {
+      throwIfAborted(options?.signal);
       try {
-        const content = await readFile(sourceFile.absolutePath, "utf8");
-
-        // Apply text cleaning before chunking
-        const cleaned = cleanText(content);
-
-        // Extract frontmatter if present (for metadata enrichment)
-        const { body } = extractFrontmatter(cleaned);
-
-        // Chunk with three-layer strategy and overlap
-        // Pass vaultPath for Obsidian parsing if configured
-        const chunks = chunkFile(sourceFile.path, body, {
-          maxChunkSize: 800,
-          overlap: 80,
-          vaultPath: this.vaultPath,
-          sourceFilePath: sourceFile.absolutePath,
-        });
-
-        // Generate embeddings and store in LanceDB
-        for (const chunk of chunks) {
-          try {
-            const vector = await getEmbedding(chunk.text, this.embeddingConfig);
-
-            // Generate image vector for chunks with images if vaultPath is configured
-            let imageVector: number[] | undefined;
-            if (this.vaultPath && chunk.images && chunk.images.length > 0) {
-              try {
-                // Use the first image for multimodal embedding
-                const image = chunk.images[0];
-                const base64Image = await imageToBase64(image.path);
-                if (base64Image) {
-                  imageVector = await getMultimodalEmbedding(
-                    { text: chunk.text, image: base64Image },
-                    this.embeddingConfig
-                  );
-                }
-              } catch (error) {
-                // Log warning but continue with text-only embedding
-                console.warn(`Failed to generate image vector for chunk ${chunk.id}: ${error}`);
-              }
-            }
-
-            const record = {
-              id: chunk.id,
-              vector,
-              text: chunk.text,
-              sourcePath: chunk.sourcePath,
-              headingText: chunk.headingText,
-              headingLevel: chunk.headingLevel,
-              tags: chunk.tags,
-              createdAt: chunk.createdAt,
-              // Store image vector if available
-              ...(imageVector ? { imageVector } : {}),
-            };
-
-            await table.add([record]);
-
-            allChunks.push({
-              id: chunk.id,
-              sourcePath: chunk.sourcePath,
-              headingText: chunk.headingText,
-              headingLevel: chunk.headingLevel,
-              tags: chunk.tags,
-              lineCount: chunk.endLine - chunk.startLine + 1,
-              charCount: chunk.text.length,
-              modifiedAt: chunk.createdAt,
-              // Add linkedNotes if present
-              ...(chunk.linkedNotes ? { linkedNotes: chunk.linkedNotes } : {}),
-            });
-          } catch (error) {
-            // Log warning and skip chunks that fail to embed
-            console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
-          }
-        }
-
-        sources.push({
-          ...sourceFile,
-          chunkCount: chunks.length,
-        });
+        await this.indexFile(sourceFile.absolutePath, { signal: options?.signal });
       } catch (error) {
-        // Log warning and skip files that fail to read
         console.warn(`Failed to ingest ${sourceFile.path}: ${error}`);
       }
     }
 
-    // Build manifest
-    const manifest: KnowledgeManifest = {
-      version: 1,
+    this.manifest = null;
+    const manifest = await this.getManifest() ?? {
+      version: 1 as const,
       lastIndexed: new Date().toISOString(),
       sourceDir: this.sourceDir,
-      chunks: allChunks,
-      sources,
+      chunks: [],
+      sources: [],
     };
-
-    this.manifest = manifest;
 
     // Mark BM25 index for rebuild
     this.bm25NeedsRebuild = true;
@@ -449,11 +472,12 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Search knowledge chunks using hybrid retrieval (vector + BM25 + RRF fusion).
    */
   async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
+    throwIfAborted(options?.signal);
     const table = this.ensureTable();
 
     // Trigger ingestion if needed
     if (await this.needsReindex()) {
-      await this.ingest();
+      await this.ingest({ signal: options?.signal });
     }
 
     // Empty query returns empty array
@@ -464,14 +488,15 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const limit = options?.limit ?? 5;
 
     // Generate embedding for query
-    const queryVector = await getEmbedding(query, this.embeddingConfig);
+    const queryVector = await getEmbedding(query, this.embeddingConfig, { signal: options?.signal });
+    throwIfAborted(options?.signal);
 
     // Vector search (top 20) - explicitly specify 'vector' column since table has multiple vector columns
     let vectorSearchQuery = table.vectorSearch(queryVector).column("vector").limit(20);
 
     // Add sourcePath filter if provided
     if (options?.sourcePath) {
-      vectorSearchQuery = vectorSearchQuery.where(`sourcePath LIKE '%${options.sourcePath}%'`) as typeof vectorSearchQuery;
+      vectorSearchQuery = vectorSearchQuery.where(`sourcePath LIKE '%${escapeSqlString(options.sourcePath)}%'`) as typeof vectorSearchQuery;
     }
 
     const vectorResults = await vectorSearchQuery
@@ -521,7 +546,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const candidates = rrfFusion(vectorMatches, bm25Results, { topN: 20 });
 
     // Rerank candidates to get final results
-    const reranked = await this.reranker.rerank(query, candidates, { topN: limit });
+    const reranked = await this.reranker.rerank(query, candidates, { topN: limit, signal: options?.signal });
 
     // Map reranked results to KnowledgeMatch[]
     // We need to re-fetch full chunk data for the reranked results
@@ -579,7 +604,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     const table = this.ensureTable();
     try {
       const results = await table.query()
-        .select(["id", "sourcePath", "headingText", "headingLevel", "tags", "text", "createdAt"])
+        .select(["id", "sourcePath", "headingText", "headingLevel", "tags", "text", "createdAt", "lastModified", "lastModifiedMs"])
         .toArray();
 
       if (results.length === 0) {
@@ -598,9 +623,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           tags?: unknown;
           text?: string;
           createdAt?: string;
+          lastModified?: number;
+          lastModifiedMs?: number;
         };
 
         if (record.id && record.text && record.sourcePath) {
+          const storedMtimeMs = getStoredMtimeMs(record.lastModifiedMs, record.lastModified);
+
           chunks.push({
             id: record.id,
             sourcePath: record.sourcePath,
@@ -614,14 +643,18 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
           // Track unique sources
           if (!sourceMap.has(record.sourcePath)) {
+            const basePath = this.vaultPath ?? this.sourceDir;
             sourceMap.set(record.sourcePath, {
               path: record.sourcePath,
-              absolutePath: join(this.sourceDir, record.sourcePath),
-              mtime: 0,
+              absolutePath: join(basePath, record.sourcePath),
+              mtime: storedMtimeMs,
               chunkCount: 0,
             });
           }
           const source = sourceMap.get(record.sourcePath)!;
+          if (storedMtimeMs > source.mtime) {
+            source.mtime = storedMtimeMs;
+          }
           source.chunkCount++;
         }
       }
@@ -666,7 +699,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     for (const source of manifest.sources) {
       try {
         const fileStat = await stat(source.absolutePath);
-        if (fileStat.mtimeMs !== source.mtime) {
+        if (!isUsableStoredMtime(source.mtime, fileStat.mtimeMs) || fileStat.mtimeMs !== source.mtime) {
           return true;
         }
       } catch {
@@ -686,7 +719,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     try {
       const results = await table.query()
-        .where(`id = '${id}'`)
+        .where(`id = '${escapeSqlString(id)}'`)
         .select(["id", "text", "sourcePath", "headingText", "headingLevel", "tags", "createdAt"])
         .limit(1)
         .toArray();
@@ -733,15 +766,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Index a single file.
    * Reads file content, chunks it, generates embeddings, and stores in LanceDB.
    */
-  async indexFile(filePath: string): Promise<void> {
+  async indexFile(filePath: string, options?: IngestOptions): Promise<void> {
+    throwIfAborted(options?.signal);
     const table = this.ensureTable();
-
-    // Debug: Log vaultPath configuration
-    console.log(`[indexFile] Processing: ${filePath}`);
-    console.log(`[indexFile] vaultPath configured: ${this.vaultPath ?? "NOT SET"}`);
 
     // Check schema for optional fields
     let schemaHasLastModified = false;
+    let schemaHasLastModifiedMs = false;
     let schemaHasLinkedNotes = false;
     let schemaHasImageVector = false;
 
@@ -749,33 +780,35 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       const schema = await table.schema();
       const fieldNames = new Set(schema.fields.map(f => f.name));
       schemaHasLastModified = fieldNames.has("lastModified");
+      schemaHasLastModifiedMs = fieldNames.has("lastModifiedMs");
       schemaHasLinkedNotes = fieldNames.has("linkedNotes");
       schemaHasImageVector = fieldNames.has("imageVector");
     } catch {
       // Schema check failed, assume base schema only
     }
 
-    // Debug: Log schema capabilities
-    console.log(`[indexFile] Schema has imageVector: ${schemaHasImageVector}`);
-
     try {
       // Get relative path for storage
       // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
       const basePath = this.vaultPath ?? this.sourceDir;
       const relativePath = relative(basePath, filePath);
+      await this.deleteSourcePath(relativePath);
 
       // Determine how to chunk based on file type
       let chunks: KnowledgeChunk[];
 
       if (isBinaryFormat(filePath)) {
         // Binary format (PDF, DOCX) - use document loader
-        console.log(`[indexFile] Loading binary document: ${filePath}`);
-        chunks = await chunkBinaryFile(relativePath, {
+        const loadedChunks = await chunkBinaryFile(filePath, {
           maxChunkSize: 800,
           overlap: 80,
           vaultPath: this.vaultPath,
           sourceFilePath: filePath,
         });
+        chunks = loadedChunks.map((chunk) => ({
+          ...chunk,
+          sourcePath: relativePath,
+        }));
       } else {
         // Text format (Markdown, TXT) - read and chunk directly
         const content = await readFile(filePath, "utf8");
@@ -795,21 +828,13 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         });
       }
 
-      // Debug: Log chunk image detection
       const chunksWithImages = chunks.filter(c => c.images && c.images.length > 0);
-      console.log(`[indexFile] Total chunks: ${chunks.length}, chunks with images: ${chunksWithImages.length}`);
-      for (const chunk of chunksWithImages) {
-        console.log(`[indexFile] Chunk ${chunk.id} has ${chunk.images!.length} image(s):`);
-        for (const img of chunk.images!) {
-          console.log(`[indexFile]   - ${img.relativePath} -> ${img.path}`);
-        }
-      }
 
       // Get file modification time (only used if schema supports it)
-      let lastModified: number | undefined;
-      if (schemaHasLastModified) {
+      let lastModifiedMs: number | undefined;
+      if (schemaHasLastModified || schemaHasLastModifiedMs) {
         const fileStat = await stat(filePath);
-        lastModified = fileStat.mtimeMs;
+        lastModifiedMs = fileStat.mtimeMs;
       }
 
       // Generate embeddings and store in LanceDB
@@ -817,19 +842,20 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       let imageVectorsFailed = 0;
 
       for (let i = 0; i < chunks.length; i++) {
+        throwIfAborted(options?.signal);
         const chunk = chunks[i];
 
         try {
           // Add delay between chunks for rate limiting (skip first chunk)
           if (i > 0) {
-            await delay(EMBED_DELAY_MS);
+            await delay(EMBED_DELAY_MS, options?.signal);
           }
 
           // Get embedding with retry logic for rate limiting
           let vector: number[] | null = null;
           for (let retry = 0; retry < MAX_RETRIES; retry++) {
             try {
-              vector = await getEmbedding(chunk.text, this.embeddingConfig);
+              vector = await getEmbedding(chunk.text, this.embeddingConfig, { signal: options?.signal });
               break;
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error);
@@ -837,7 +863,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
                 // Rate limit - exponential backoff
                 const backoffDelay = RETRY_BASE_DELAY_MS * Math.pow(2, retry);
                 console.warn(`Rate limit hit, retrying in ${backoffDelay}ms (attempt ${retry + 1}/${MAX_RETRIES})`);
-                await delay(backoffDelay);
+                await delay(backoffDelay, options?.signal);
                 continue;
               }
               throw error;
@@ -852,24 +878,19 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           // Generate image vector for chunks with images if vaultPath is configured
           let imageVector: number[] | undefined;
           const willGenerateImageVector = this.vaultPath && chunk.images && chunk.images.length > 0 && schemaHasImageVector;
-          console.log(`[indexFile] Chunk ${chunk.id}: willGenerateImageVector=${willGenerateImageVector}, vaultPath=${!!this.vaultPath}, hasImages=${!!(chunk.images?.length)}, schemaHasImageVector=${schemaHasImageVector}`);
 
           if (willGenerateImageVector) {
             try {
               const image = chunk.images![0];
-              console.log(`[indexFile] Attempting to load image: ${image.path}`);
               const base64Image = await imageToBase64(image.path);
-              console.log(`[indexFile] Base64 image length: ${base64Image.length}`);
               if (base64Image) {
-                await delay(EMBED_DELAY_MS); // Delay before multimodal embedding
-                console.log(`[indexFile] Calling getMultimodalEmbedding...`);
+                await delay(EMBED_DELAY_MS, options?.signal); // Delay before multimodal embedding
                 imageVector = await getMultimodalEmbedding(
                   { text: chunk.text, image: base64Image },
-                  this.embeddingConfig
+                  this.embeddingConfig,
+                  { signal: options?.signal }
                 );
-                console.log(`[indexFile] Image vector generated successfully, length: ${imageVector.length}`);
               } else {
-                console.warn(`[indexFile] imageToBase64 returned empty string for ${image.path}`);
                 imageVectorsFailed++;
               }
             } catch (error) {
@@ -891,8 +912,12 @@ export class VectorKnowledgeStore implements KnowledgeStore {
           };
 
           // Add optional fields only if schema supports them
-          if (schemaHasLastModified && lastModified !== undefined) {
-            record.lastModified = lastModified;
+          if (schemaHasLastModified && lastModifiedMs !== undefined) {
+            record.lastModified = Math.floor(lastModifiedMs / 1000);
+          }
+
+          if (schemaHasLastModifiedMs && lastModifiedMs !== undefined) {
+            record.lastModifiedMs = lastModifiedMs;
           }
 
           if (schemaHasLinkedNotes && chunk.linkedNotes && chunk.linkedNotes.length > 0) {
@@ -906,6 +931,9 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
           await table.add([record]);
         } catch (error) {
+          if (options?.signal?.aborted) {
+            throw error;
+          }
           console.warn(`Failed to embed chunk ${chunk.id}: ${error}`);
         }
       }
@@ -935,8 +963,6 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Remove all chunks belonging to a file.
    */
   async removeFile(filePath: string): Promise<void> {
-    const table = this.ensureTable();
-
     try {
       // Get relative path for matching
       // Use vaultPath if available (for Obsidian vault files), otherwise use sourceDir
@@ -944,7 +970,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
       const relativePath = relative(basePath, filePath);
 
       // Delete chunks matching this source path
-      await table.delete(`sourcePath = '${relativePath}'`);
+      await this.deleteSourcePath(relativePath);
 
       // Mark BM25 index for rebuild
       this.bm25NeedsRebuild = true;
@@ -972,17 +998,16 @@ export class VectorKnowledgeStore implements KnowledgeStore {
 
     try {
       const results = await table.query()
-        .select(["sourcePath", "lastModified"])
+        .select(["sourcePath", "lastModified", "lastModifiedMs"])
         .toArray();
 
       for (const row of results) {
-        const record = row as { sourcePath?: string; lastModified?: number };
+        const record = row as { sourcePath?: string; lastModified?: number; lastModifiedMs?: number };
         if (record.sourcePath) {
           // Keep track of the most recent lastModified for each file
           const existing = existingFiles.get(record.sourcePath) ?? 0;
-          if (record.lastModified && record.lastModified > existing) {
-            existingFiles.set(record.sourcePath, record.lastModified);
-          }
+          const storedMtimeMs = getStoredMtimeMs(record.lastModifiedMs, record.lastModified);
+          existingFiles.set(record.sourcePath, Math.max(existing, storedMtimeMs));
         }
       }
     } catch (error) {
@@ -1015,7 +1040,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     for (const [sourcePath] of existingFiles) {
       if (!currentPaths.has(sourcePath)) {
         try {
-          await table.delete(`sourcePath = '${sourcePath}'`);
+          await this.deleteSourcePath(sourcePath);
           stats.removed++;
         } catch (error) {
           console.warn(`Failed to remove deleted file ${sourcePath}: ${error}`);
@@ -1036,7 +1061,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         await delay(EMBED_DELAY_MS);
       }
 
-      if (!existingMtime) {
+      if (existingMtime === undefined) {
         // New file - index it
         processedFiles++;
         console.log(`[${processedFiles}/${totalFiles}] Indexing: ${file.path}`);
@@ -1046,7 +1071,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
         } catch (error) {
           console.warn(`Failed to index new file ${file.path}: ${error}`);
         }
-      } else if (file.mtime > existingMtime) {
+      } else if (!isUsableStoredMtime(existingMtime, file.mtime) || file.mtime > existingMtime) {
         // Modified file - reindex it
         processedFiles++;
         console.log(`[${processedFiles}/${totalFiles}] Reindexing: ${file.path}`);

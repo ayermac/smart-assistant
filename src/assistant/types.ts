@@ -38,6 +38,20 @@ export interface ToolEndEvent {
 }
 
 /**
+ * Event emitted when a tool streams progress.
+ */
+export interface ToolUpdateEvent {
+  readonly type: "tool_update";
+  readonly toolName: string;
+  readonly message: string;
+}
+
+/**
  * Union type for all assistant events.
  */
-export type AssistantEvent = TextDeltaEvent | ErrorEvent | ToolStartEvent | ToolEndEvent;
+export type AssistantEvent =
+  | TextDeltaEvent
+  | ErrorEvent
+  | ToolStartEvent
+  | ToolUpdateEvent
+  | ToolEndEvent;

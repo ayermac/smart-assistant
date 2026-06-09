@@ -5,7 +5,7 @@
  * Supports both Anthropic Claude and OpenAI-compatible endpoints.
  *
  * Configuration via environment variables:
- * - SMART_ASSISTANT_PROVIDER: "anthropic" (default) or "openai"
+ * - SMART_ASSISTANT_PROVIDER: "openai" (default) or "anthropic"
  * - SMART_ASSISTANT_MODEL: Model ID (e.g., "claude-sonnet-4-20250514" or "gpt-4o")
  * - OPENAI_API_KEY: Required for OpenAI provider
  * - OPENAI_BASE_URL: Optional, for OpenAI-compatible endpoints (e.g., Ollama, vLLM, etc.)
@@ -14,6 +14,8 @@
 
 import { getModel, type Model, type Api } from "@earendil-works/pi-ai";
 import {
+  DEFAULT_SMART_ASSISTANT_MODEL,
+  DEFAULT_SMART_ASSISTANT_PROVIDER,
   SMART_ASSISTANT_PROVIDER_ENV,
   SMART_ASSISTANT_MODEL_ENV,
 } from "./config.js";
@@ -21,7 +23,7 @@ import {
 /**
  * Default model for the smart-assistant.
  *
- * Uses Claude Sonnet 4 via Anthropic as the default model.
+ * Uses a Doubao/OpenAI-compatible model as the default model.
  * Can be overridden via SMART_ASSISTANT_PROVIDER and SMART_ASSISTANT_MODEL
  * environment variables.
  *
@@ -32,8 +34,8 @@ import {
  * - Set OPENAI_BASE_URL=<your-endpoint> (e.g., http://localhost:11434/v1 for Ollama)
  */
 export function getDefaultModel(): Model<Api> {
-  const provider = process.env[SMART_ASSISTANT_PROVIDER_ENV]?.trim() || "anthropic";
-  const modelId = process.env[SMART_ASSISTANT_MODEL_ENV]?.trim() || "claude-sonnet-4-20250514";
+  const provider = process.env[SMART_ASSISTANT_PROVIDER_ENV]?.trim() || DEFAULT_SMART_ASSISTANT_PROVIDER;
+  const modelId = process.env[SMART_ASSISTANT_MODEL_ENV]?.trim() || DEFAULT_SMART_ASSISTANT_MODEL;
 
   // Try to get model from registry first
   let model: Model<Api> | undefined = getModel(provider as "anthropic", modelId as "claude-sonnet-4-20250514") as Model<Api> | undefined;

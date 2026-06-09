@@ -12,7 +12,11 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { extname } from "node:path";
-import type { EmbeddingConfig } from "../memory/embedding.js";
+import {
+  resolveEmbeddingTimeoutMs,
+  type EmbeddingConfig,
+  type EmbeddingRequestOptions,
+} from "../memory/embedding.js";
 
 /**
  * Input for multimodal embedding.
@@ -50,7 +54,8 @@ const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
  */
 export async function getMultimodalEmbedding(
   input: MultimodalInput,
-  config: EmbeddingConfig
+  config: EmbeddingConfig,
+  options?: EmbeddingRequestOptions
 ): Promise<number[]> {
   if (!config.apiKey) {
     throw new Error("Embedding API key not configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.");
@@ -90,13 +95,36 @@ export async function getMultimodalEmbedding(
     };
   }
 
+  const timeoutMs = options?.timeoutMs ?? resolveEmbeddingTimeoutMs();
+  const signals = [
+    ...(options?.signal ? [options.signal] : []),
+    ...(timeoutMs > 0 ? [AbortSignal.timeout(timeoutMs)] : []),
+  ];
+  const fetchSignal =
+    signals.length === 0
+      ? undefined
+      : signals.length === 1
+        ? signals[0]
+        : AbortSignal.any(signals);
+
   const response = await fetch(`${config.baseUrl}/embeddings`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
     },
+    signal: fetchSignal,
     body: JSON.stringify(requestBody),
+  }).catch((error: unknown) => {
+    if (options?.signal?.aborted) {
+      throw new Error("Multimodal embedding request aborted");
+    }
+
+    if (fetchSignal?.aborted) {
+      throw new Error(`Multimodal embedding API timed out after ${timeoutMs}ms`);
+    }
+
+    throw error;
   });
 
   if (!response.ok) {

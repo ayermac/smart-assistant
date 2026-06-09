@@ -18,7 +18,16 @@ import type {
   ChunkMetadata,
   SourceMetadata,
   SearchOptions,
+  IngestOptions,
 } from "./types.js";
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) {
+    return;
+  }
+
+  throw new Error("Knowledge operation aborted");
+}
 
 /**
  * Configuration for FileKnowledgeStore.
@@ -210,7 +219,8 @@ export class FileKnowledgeStore implements KnowledgeStore {
   /**
    * Ingest files from the knowledge source directory.
    */
-  async ingest(): Promise<KnowledgeManifest> {
+  async ingest(options?: IngestOptions): Promise<KnowledgeManifest> {
+    throwIfAborted(options?.signal);
     const sourceFiles = await this.scanSourceFiles();
     const chunksDir = this.getChunksDir();
     await this.ensureDir(chunksDir);
@@ -219,6 +229,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const sources: SourceMetadata[] = [];
 
     for (const sourceFile of sourceFiles) {
+      throwIfAborted(options?.signal);
       try {
         const content = await readFile(sourceFile.absolutePath, "utf8");
         const chunks = chunkFile(sourceFile.path, content);
@@ -269,9 +280,10 @@ export class FileKnowledgeStore implements KnowledgeStore {
    * Search knowledge chunks matching a query.
    */
   async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
+    throwIfAborted(options?.signal);
     // Trigger ingestion if needed
     if (await this.needsReindex()) {
-      await this.ingest();
+      await this.ingest({ signal: options?.signal });
     }
 
     // Empty query returns empty array
@@ -284,6 +296,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const chunks: KnowledgeChunk[] = [];
 
     for (const meta of chunkMetadata) {
+      throwIfAborted(options?.signal);
       const chunk = await this.getChunk(meta.id);
       if (chunk) {
         chunks.push(chunk);

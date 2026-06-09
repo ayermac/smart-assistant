@@ -11,8 +11,9 @@
   - BM25 index rebuild and search
   - RRF fusion
   - rerank
-  - write queue waits
-- Added `AsyncOperationQueue` and routed knowledge writes through it:
+  - read/write gate waits
+- Added `AsyncOperationQueue` read/write gating and routed knowledge reads/writes through it:
+  - `search`
   - `ingest`
   - `indexFile`
   - `reindexFile`
@@ -38,7 +39,7 @@ Result:
 
 - `npm run typecheck`: passed
 - `npm run typecheck:scripts`: passed
-- `npm test`: passed, 13 test files / 74 tests
+- `npm test`: passed, 13 test files / 78 tests
 - `npm run build`: passed
 
 Additional checks:
@@ -58,6 +59,6 @@ Result:
 ## Notes
 
 - Search still performs normal retrieval semantics; this phase focused on observability and execution stability.
-- Searches wait for active queued writes before reading the knowledge table.
+- Searches and writes are mutually gated so watcher updates do not mutate the knowledge table during active searches.
 - Startup vault sync remains incremental after legacy mtime metadata repair.
 - Debug logging writes to stderr so normal CLI/TUI output stays focused.

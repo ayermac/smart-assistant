@@ -21,7 +21,7 @@ All notable changes to Smart Assistant will be documented in this file.
 - Installed npm binary execution when `smart-assistant` or `smart-assistant-tui` is reached through a package-manager symlink.
 - `search_knowledge` now streams progress, propagates abort signals, and enforces timeouts so slow embedding/search calls do not leave the TUI indefinitely responding.
 - TUI transcript rendering now uses fixed prefixes, width-aware wrapping, cleaner local-knowledge citations, and indented list continuations.
-- Knowledge-store writes from startup sync, watcher events, and search-triggered indexing now run through a serialized write queue.
+- Knowledge-store searches and writes now run through a read/write gate so watcher updates cannot mutate the table while a search is active.
 
 ### Changed
 - High-volume vault indexing messages now emit at debug level instead of default terminal output.

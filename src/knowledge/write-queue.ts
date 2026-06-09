@@ -1,60 +1,128 @@
 export class AsyncOperationQueue {
-  private tail: Promise<void> = Promise.resolve();
-  private pendingCount = 0;
+  private activeReaders = 0;
+  private activeWriter = false;
+  private queue: Array<QueuedOperation> = [];
 
   get size(): number {
-    return this.pendingCount;
+    return this.queue.length + this.activeReaders + (this.activeWriter ? 1 : 0);
   }
 
-  async run<T>(task: () => Promise<T>): Promise<T> {
-    const previous = this.tail;
-    let release = () => {};
-    this.tail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.pendingCount += 1;
+  async runRead<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const release = await this.acquire("read", signal);
 
     try {
-      await previous.catch(() => undefined);
       return await task();
     } finally {
-      this.pendingCount -= 1;
       release();
     }
   }
 
-  async wait(signal?: AbortSignal): Promise<void> {
-    if (!signal) {
-      await this.tail.catch(() => undefined);
-      return;
-    }
+  async runWrite<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const release = await this.acquire("write", signal);
 
-    if (signal.aborted) {
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  }
+
+  private async acquire(mode: OperationMode, signal?: AbortSignal): Promise<() => void> {
+    if (signal?.aborted) {
       throw createAbortError(signal);
     }
 
-    let cleanupAbortListener = () => {};
+    if (this.canStartImmediately(mode)) {
+      this.start(mode);
+      return () => this.release(mode);
+    }
 
-    try {
-      await Promise.race([
-        this.tail.catch(() => undefined),
-        new Promise<never>((_, reject) => {
-          const onAbort = () => {
-            reject(createAbortError(signal));
-          };
+    return new Promise((resolve, reject) => {
+      let cleanupAbortListener = () => {};
 
-          cleanupAbortListener = () => signal.removeEventListener("abort", onAbort);
-          signal.addEventListener("abort", onAbort, { once: true });
-        }),
-      ]);
-    } finally {
-      cleanupAbortListener();
+      const request: QueuedOperation = {
+        mode,
+        start: () => {
+          cleanupAbortListener();
+          this.start(mode);
+          resolve(() => this.release(mode));
+        },
+      };
+
+      if (signal) {
+        const onAbort = () => {
+          this.queue = this.queue.filter((queued) => queued !== request);
+          cleanupAbortListener();
+          reject(createAbortError(signal));
+        };
+
+        cleanupAbortListener = () => signal.removeEventListener("abort", onAbort);
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      this.queue.push(request);
+    });
+  }
+
+  private canStartImmediately(mode: OperationMode): boolean {
+    if (mode === "read") {
+      return !this.activeWriter && this.queue.length === 0;
+    }
+
+    return !this.activeWriter && this.activeReaders === 0 && this.queue.length === 0;
+  }
+
+  private start(mode: OperationMode): void {
+    if (mode === "read") {
+      this.activeReaders += 1;
+      return;
+    }
+
+    this.activeWriter = true;
+  }
+
+  private release(mode: OperationMode): void {
+    if (mode === "read") {
+      this.activeReaders -= 1;
+    } else {
+      this.activeWriter = false;
+    }
+
+    this.drain();
+  }
+
+  private drain(): void {
+    if (this.activeWriter || this.queue.length === 0) {
+      return;
+    }
+
+    const first = this.queue[0];
+    if (first.mode === "write") {
+      if (this.activeReaders > 0) {
+        return;
+      }
+
+      this.queue.shift();
+      first.start();
+      return;
+    }
+
+    while (this.queue[0]?.mode === "read") {
+      const read = this.queue.shift()!;
+      read.start();
     }
   }
 }
 
-function createAbortError(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
+type OperationMode = "read" | "write";
+
+interface QueuedOperation {
+  mode: OperationMode;
+  start: () => void;
+}
+
+function createAbortError(signal?: AbortSignal): Error {
+  return signal?.reason instanceof Error
     ? signal.reason
-    : new Error("Operation aborted while waiting for queued writes");
+    : new Error("Operation aborted while waiting for queued knowledge operation");
 }

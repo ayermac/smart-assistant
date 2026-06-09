@@ -442,7 +442,7 @@ npm test           # 运行测试
 - 修复 TUI 初始化期间的输入和退出行为；vault 同步仍在运行时，`/exit` 和 Ctrl+C 也可退出。
 - 修复通过包管理器符号链接运行 `smart-assistant` / `smart-assistant-tui` 时入口没有执行的问题。
 - 为 `search_knowledge` 增加中断传播、进度提示和超时，避免 embedding/search 调用过慢时 TUI 一直停在 responding。
-- 串行化 startup sync、watcher 事件和 search 触发索引涉及的 knowledge-store 写入。
+- 新增 knowledge-store 读写门闩，避免 startup sync 和 watcher 写入在搜索过程中修改表。
 - 优化 TUI 对话输出排版：固定前缀栏、自动换行、来源引用美化，并对列表续行缩进。
 
 **文档：**

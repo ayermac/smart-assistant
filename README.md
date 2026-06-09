@@ -442,7 +442,7 @@ npm test           # Run tests
 - Fixed TUI input and exit behavior during initialization; `/exit` and Ctrl+C work while vault sync is still running.
 - Fixed installed npm binary execution when package-manager bin links are symlinks.
 - Added abort propagation, progress updates, and timeouts for `search_knowledge` so slow embedding/search calls do not leave the TUI indefinitely responding.
-- Serialized knowledge-store writes from startup sync, watcher events, and search-triggered indexing.
+- Added a knowledge-store read/write gate so startup sync and watcher writes do not mutate the table during active searches.
 - Improved TUI transcript formatting with fixed prefixes, wrapped assistant output, cleaner citations, and indented list continuations.
 
 **Docs:**

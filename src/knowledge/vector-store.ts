@@ -214,28 +214,32 @@ export class VectorKnowledgeStore implements KnowledgeStore {
     this.logger = createLogger("knowledge");
   }
 
-  private async runWrite<T>(operation: string, task: () => Promise<T>): Promise<T> {
+  private async runRead<T>(operation: string, task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (this.writeQueue.size > 0) {
-      this.logger.debug("knowledge write waiting", {
+      this.logger.debug("knowledge read waiting", {
         operation,
-        pendingWrites: this.writeQueue.size,
+        pendingOperations: this.writeQueue.size,
       });
     }
 
-    return this.writeQueue.run(() =>
-      timeAsync(this.logger, "debug", `knowledge.${operation}`, task, { operation })
+    return this.writeQueue.runRead(
+      () => timeAsync(this.logger, "debug", `knowledge.${operation}`, task, { operation }),
+      signal
     );
   }
 
-  private async waitForWrites(operation: string, signal?: AbortSignal): Promise<void> {
+  private async runWrite<T>(operation: string, task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (this.writeQueue.size > 0) {
-      this.logger.debug("knowledge read waiting for writes", {
+      this.logger.debug("knowledge write waiting", {
         operation,
-        pendingWrites: this.writeQueue.size,
+        pendingOperations: this.writeQueue.size,
       });
     }
 
-    await this.writeQueue.wait(signal);
+    return this.writeQueue.runWrite(
+      () => timeAsync(this.logger, "debug", `knowledge.${operation}`, task, { operation }),
+      signal
+    );
   }
 
   /**
@@ -467,7 +471,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Ingest files from the knowledge source directory.
    */
   async ingest(options?: IngestOptions): Promise<KnowledgeManifest> {
-    return this.runWrite("ingest", () => this.ingestUnlocked(options));
+    return this.runWrite("ingest", () => this.ingestUnlocked(options), options?.signal);
   }
 
   private async ingestUnlocked(options?: IngestOptions): Promise<KnowledgeManifest> {
@@ -518,22 +522,22 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Search knowledge chunks using hybrid retrieval (vector + BM25 + RRF fusion).
    */
   async search(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
-    await this.waitForWrites("search", options?.signal);
-    throwIfAborted(options?.signal);
-    const table = this.ensureTable();
-
-    // Trigger ingestion if needed
-    const needsReindex = await timeAsync(
-      this.logger,
-      "debug",
-      "knowledge.search.needsReindex",
+    const needsReindex = await this.runRead(
+      "search.needsReindex",
       () => this.needsReindex(),
-      { queryLength: query.length }
+      options?.signal
     );
 
     if (needsReindex) {
       await this.ingest({ signal: options?.signal });
     }
+
+    return this.runRead("search", () => this.searchUnlocked(query, options), options?.signal);
+  }
+
+  private async searchUnlocked(query: string, options?: SearchOptions): Promise<KnowledgeMatch[]> {
+    throwIfAborted(options?.signal);
+    const table = this.ensureTable();
 
     // Empty query returns empty array
     if (!query || query.trim().length === 0) {
@@ -865,7 +869,7 @@ export class VectorKnowledgeStore implements KnowledgeStore {
    * Reads file content, chunks it, generates embeddings, and stores in LanceDB.
    */
   async indexFile(filePath: string, options?: IngestOptions): Promise<void> {
-    return this.runWrite("indexFile", () => this.indexFileUnlocked(filePath, options));
+    return this.runWrite("indexFile", () => this.indexFileUnlocked(filePath, options), options?.signal);
   }
 
   private async indexFileUnlocked(filePath: string, options?: IngestOptions): Promise<void> {

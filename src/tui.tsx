@@ -66,6 +66,8 @@ function App({ options }: { options: CliOptions }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const nextLineId = useRef(1);
   const activeAssistantLineId = useRef<number | null>(null);
+  const isPromptInProgressRef = useRef(false);
+  const isExitingRef = useRef(false);
 
   const appendLine = useCallback((kind: LogKind, text: string): number => {
     const id = nextLineId.current++;
@@ -84,9 +86,38 @@ function App({ options }: { options: CliOptions }) {
   }, []);
 
   const stopAndExit = useCallback(async (): Promise<void> => {
+    if (isExitingRef.current) {
+      return;
+    }
+
+    isExitingRef.current = true;
     await runtimeRef.current?.stop();
     exit();
+    process.exit(0);
   }, [exit]);
+
+  useEffect(() => {
+    isPromptInProgressRef.current = isPromptInProgress;
+  }, [isPromptInProgress]);
+
+  const handleInterrupt = useCallback((): void => {
+    if (isPromptInProgressRef.current) {
+      runtimeRef.current?.controller.abort();
+      appendLine("system", "Aborted");
+      isPromptInProgressRef.current = false;
+      setIsPromptInProgress(false);
+      return;
+    }
+
+    void stopAndExit();
+  }, [appendLine, stopAndExit]);
+
+  useEffect(() => {
+    process.on("SIGINT", handleInterrupt);
+    return () => {
+      process.off("SIGINT", handleInterrupt);
+    };
+  }, [handleInterrupt]);
 
   useEffect(() => {
     let isMounted = true;
@@ -157,25 +188,27 @@ function App({ options }: { options: CliOptions }) {
     }
   }, [appendLine, updateLine]);
 
-  const submit = useCallback(async (): Promise<void> => {
-    const message = input.trim();
-    setInput("");
+  const submit = useCallback(async (rawInput?: string): Promise<void> => {
+    const message = (rawInput ?? input).trim();
 
     if (message === "" || message === "/exit") {
+      setInput("");
       await stopAndExit();
       return;
     }
 
     if (message === "/help") {
+      setInput("");
       appendLine("system", "Commands: /help, /exit. Ctrl+C aborts an active response or exits when idle.");
       return;
     }
 
     if (!runtime) {
-      appendLine("error", "Assistant is not ready yet.");
+      appendLine("error", "Assistant is still initializing.");
       return;
     }
 
+    setInput("");
     appendLine("user", message);
     setIsPromptInProgress(true);
     activeAssistantLineId.current = null;
@@ -193,22 +226,17 @@ function App({ options }: { options: CliOptions }) {
 
   useInput((value, key) => {
     if (key.ctrl && value === "c") {
-      if (isPromptInProgress) {
-        runtimeRef.current?.controller.abort();
-        appendLine("system", "Aborted");
-        setIsPromptInProgress(false);
-      } else {
-        void stopAndExit();
-      }
+      handleInterrupt();
       return;
     }
 
-    if (isInitializing || isPromptInProgress) {
+    if (isPromptInProgress) {
       return;
     }
 
-    if (key.return) {
-      void submit();
+    if (key.return || value.includes("\n") || value.includes("\r")) {
+      const inlineInput = value.replace(/[\r\n]/g, "");
+      void submit(inlineInput ? `${input}${inlineInput}` : undefined);
       return;
     }
 

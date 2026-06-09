@@ -91,6 +91,48 @@ assistant> 根据我存储的记忆，你的名字是小C。
 
 ---
 
+## 🚢 生产环境使用
+
+日常使用时，建议先构建一次，然后运行编译后的入口，而不是一直使用 `npm run` 脚本：
+
+```bash
+npm install
+npm run build
+node dist/cli.js
+node dist/tui.js
+```
+
+如果希望在本机直接使用稳定命令，先对已构建的 checkout 做一次本机安装：
+
+```bash
+npm install
+npm run build
+npm install -g .
+```
+
+之后日常启动不再需要 `npm`：
+
+```bash
+smart-assistant
+smart-assistant-tui
+```
+
+建议显式配置持久化数据目录和 Obsidian vault 路径：
+
+```bash
+export SMART_ASSISTANT_DATA_DIR="$HOME/.smart-assistant"
+export OBSIDIAN_VAULT_PATH="$HOME/Obsidian/SecondBrain"
+smart-assistant-tui
+```
+
+生产使用说明：
+- `npm run dev` 和 `npm run tui` 是开发快捷方式。
+- `smart-assistant` 启动基础 readline CLI。
+- `smart-assistant-tui` 启动 Ink 终端 UI。
+- 拉取代码变更后，重新执行 `npm run build`；只有全局命令链接缺失或指向其他位置时才需要重新安装。
+
+---
+
 ## ⚙️ 配置
 
 ### 环境变量
@@ -361,6 +403,23 @@ npm test           # 运行测试
 ---
 
 ## 📝 更新日志
+
+### Unreleased (2026-06-09)
+
+**新功能：**
+- 新增 Ink 终端 UI，并提供 `smart-assistant-tui` 二进制入口。
+- 新增 CLI/TUI 共享运行时初始化，用于会话、数据路径和 vault 同步。
+
+**修复：**
+- 修复 `npm install` 依赖解析问题：对齐 `apache-arrow` 与 LanceDB 的 peer 范围，并移除未使用的 LangChain 依赖。
+- 稳定 Obsidian 启动同步，使用可靠的毫秒级 mtime 元数据。
+- 修复旧 knowledge 表 schema 不兼容导致 LanceDB `Panic in async function` 的问题。
+- 修复 TUI 初始化期间的输入和退出行为；vault 同步仍在运行时，`/exit` 和 Ctrl+C 也可退出。
+- 修复通过包管理器符号链接运行 `smart-assistant` / `smart-assistant-tui` 时入口没有执行的问题。
+
+**文档：**
+- 补充通过编译后的 `dist` 入口和安装后的 CLI 二进制进行生产使用的说明。
+- 补充 TUI 启动输入行为和 Obsidian 增量同步验证说明。
 
 ### v2.3 (2026-05-26)
 

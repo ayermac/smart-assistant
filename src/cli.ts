@@ -6,12 +6,12 @@ config({ quiet: true });
 
 import { stdin, stdout, stderr } from "node:process";
 import { createInterface } from "node:readline/promises";
-import { pathToFileURL } from "node:url";
 import { SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
 import { type AssistantEvent } from "./assistant/index.js";
 import {
   buildUsage,
   createAssistantRuntime,
+  isDirectExecution,
   parseArgs,
   readPackageVersion,
   type CliOptions,
@@ -156,7 +156,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   await runInteractive(parsed.options);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message);

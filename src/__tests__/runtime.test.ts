@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildUsage, parseArgs, resolveRuntimePaths } from "../runtime.js";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildUsage, isDirectExecution, parseArgs, resolveRuntimePaths } from "../runtime.js";
 
 describe("runtime argument parsing", () => {
   it("parses run options", () => {
@@ -35,5 +39,23 @@ describe("runtime path resolution", () => {
     expect(paths.dataPaths.sessions).toBe("/tmp/smart-assistant-test/sessions");
     expect(paths.dataPaths.vectors).toBe("/tmp/smart-assistant-test/vectors");
     expect(paths.knowledgeSourceDir).toBe("/tmp/smart-assistant-test/knowledge-sources");
+  });
+});
+
+describe("runtime entrypoint detection", () => {
+  it("matches direct execution through a symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "smart-assistant-runtime-"));
+    const linkPath = join(tempDir, "smart-assistant");
+
+    try {
+      symlinkSync(fileURLToPath(import.meta.url), linkPath);
+      expect(isDirectExecution(import.meta.url, linkPath)).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores missing argv paths", () => {
+    expect(isDirectExecution(import.meta.url, undefined)).toBe(false);
   });
 });

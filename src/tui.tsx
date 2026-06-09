@@ -5,12 +5,12 @@ config({ quiet: true });
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, render, useApp, useInput, useWindowSize } from "ink";
-import { pathToFileURL } from "node:url";
 import { SMART_ASSISTANT_DATA_DIR_ENV } from "./config.js";
 import type { AssistantEvent } from "./assistant/index.js";
 import {
   buildUsage,
   createAssistantRuntime,
+  isDirectExecution,
   parseArgs,
   readPackageVersion,
   type AssistantRuntime,
@@ -310,7 +310,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   render(<App options={parsed.options} />);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message);

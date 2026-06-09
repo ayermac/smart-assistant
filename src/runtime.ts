@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +107,20 @@ export async function readPackageVersion(): Promise<string> {
   const packagePath = resolve(dirname(fileURLToPath(import.meta.url)), "../package.json");
   const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as { version?: string };
   return packageJson.version ?? "0.0.0";
+}
+
+export function isDirectExecution(importMetaUrl: string, argvPath = process.argv[1]): boolean {
+  if (!argvPath) {
+    return false;
+  }
+
+  try {
+    const modulePath = realpathSync(fileURLToPath(importMetaUrl));
+    const executedPath = realpathSync(resolve(argvPath));
+    return modulePath === executedPath;
+  } catch {
+    return false;
+  }
 }
 
 export function resolveRuntimePaths(

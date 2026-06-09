@@ -91,6 +91,48 @@ assistant> 根据我存储的记忆，你的名字是小C。
 
 ---
 
+## 🚢 Production Usage
+
+For day-to-day use, build once and run the compiled entry points instead of `npm run` scripts:
+
+```bash
+npm install
+npm run build
+node dist/cli.js
+node dist/tui.js
+```
+
+To expose stable shell commands on your machine, install the built checkout once:
+
+```bash
+npm install
+npm run build
+npm install -g .
+```
+
+Then run the assistant without `npm`:
+
+```bash
+smart-assistant
+smart-assistant-tui
+```
+
+Use explicit local paths for persistent data and your Obsidian vault:
+
+```bash
+export SMART_ASSISTANT_DATA_DIR="$HOME/.smart-assistant"
+export OBSIDIAN_VAULT_PATH="$HOME/Obsidian/SecondBrain"
+smart-assistant-tui
+```
+
+Production notes:
+- `npm run dev` and `npm run tui` are development shortcuts.
+- `smart-assistant` starts the plain readline CLI.
+- `smart-assistant-tui` starts the Ink terminal UI.
+- Rebuild with `npm run build` after pulling code changes; reinstall only if the global command link is missing or points elsewhere.
+
+---
+
 ## ⚙️ Configuration
 
 ### Environment Variables
@@ -361,6 +403,23 @@ npm test           # Run tests
 ---
 
 ## 📝 Changelog
+
+### Unreleased (2026-06-09)
+
+**New Features:**
+- Added Ink terminal UI with `smart-assistant-tui` binary.
+- Added shared CLI/TUI runtime setup for sessions, data paths, and vault sync.
+
+**Fixes:**
+- Fixed `npm install` dependency resolution by aligning `apache-arrow` with LanceDB and removing unused LangChain dependencies.
+- Stabilized Obsidian startup sync with reliable millisecond mtime metadata.
+- Repaired incompatible legacy knowledge table schemas that could trigger LanceDB `Panic in async function`.
+- Fixed TUI input and exit behavior during initialization; `/exit` and Ctrl+C work while vault sync is still running.
+- Fixed installed npm binary execution when package-manager bin links are symlinks.
+
+**Docs:**
+- Documented production usage through compiled `dist` entry points and installed CLI binaries.
+- Documented TUI startup input behavior and incremental Obsidian sync verification.
 
 ### v2.3 (2026-05-26)
 

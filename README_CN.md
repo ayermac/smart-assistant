@@ -57,8 +57,24 @@ COHERE_API_KEY=your-cohere-api-key
 
 ### 3. 运行
 
+基础 readline CLI：
+
 ```bash
 npm run dev
+```
+
+Ink 终端 UI：
+
+```bash
+npm run tui
+```
+
+构建后会提供两个入口：
+
+```bash
+npm run build
+node dist/cli.js --help
+node dist/tui.js --help
 ```
 
 ### 4. 试用
@@ -222,7 +238,7 @@ OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 3. 文件监听器开始监控变更
 4. 在 Obsidian 中创建/修改/删除笔记
 5. 变更自动被索引
-6. 在 CLI 中查询 vault 内容
+6. 在 CLI 或 TUI 中查询 vault 内容
 
 ---
 
@@ -246,6 +262,8 @@ OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 smart-assistant/
 ├── src/
 │   ├── cli.ts              # CLI 入口
+│   ├── tui.tsx             # Ink 终端 UI 入口
+│   ├── runtime.ts          # CLI/TUI 共享运行时辅助逻辑
 │   ├── assistant/          # Agent 控制器
 │   ├── memory/             # 长期记忆（LanceDB）
 │   ├── knowledge/          # 知识 RAG（LanceDB）
@@ -315,10 +333,11 @@ npm run eval  # 运行评估套件
 
 ```bash
 npm run dev        # 开发模式（热重载）
+npm run tui        # Ink 终端 UI
 npm run build      # 生产构建
 npm run typecheck  # 类型检查
 npm run eval       # 运行评估
-npm run test       # 运行测试
+npm test           # 运行测试
 ```
 
 ---
@@ -329,7 +348,7 @@ npm run test       # 运行测试
 - 图片需要 `doubao-embedding-vision` 或兼容的多模态嵌入模型
 - 无云同步 — 数据完全本地优先
 - 单用户范围（无多租户支持）
-- 仅 CLI 界面（Web UI 计划在 v3 实现）
+- 仅终端界面：readline CLI 和 Ink TUI。Web UI 计划在 v3 实现。
 
 ---
 

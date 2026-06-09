@@ -57,8 +57,24 @@ COHERE_API_KEY=your-cohere-api-key
 
 ### 3. Run
 
+Plain readline CLI:
+
 ```bash
 npm run dev
+```
+
+Ink terminal UI:
+
+```bash
+npm run tui
+```
+
+After building, the package exposes both binaries:
+
+```bash
+npm run build
+node dist/cli.js --help
+node dist/tui.js --help
 ```
 
 ### 4. Try It
@@ -222,7 +238,7 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 3. File watcher starts monitoring changes
 4. Create/modify/delete notes in Obsidian
 5. Changes are indexed automatically
-6. Query your vault in CLI
+6. Query your vault in CLI or TUI
 
 ---
 
@@ -246,6 +262,8 @@ When `OBSIDIAN_VAULT_PATH` is configured:
 smart-assistant/
 ├── src/
 │   ├── cli.ts              # CLI entry point
+│   ├── tui.tsx             # Ink terminal UI entry point
+│   ├── runtime.ts          # Shared CLI/TUI runtime helpers
 │   ├── assistant/          # Agent controller
 │   ├── memory/             # Long-term memory (LanceDB)
 │   ├── knowledge/          # Knowledge RAG (LanceDB)
@@ -315,10 +333,11 @@ npm run eval  # Run evaluation suite
 
 ```bash
 npm run dev        # Development mode (hot reload)
+npm run tui        # Ink terminal UI
 npm run build      # Production build
 npm run typecheck  # Type checking
 npm run eval       # Run evaluations
-npm run test       # Run tests
+npm test           # Run tests
 ```
 
 ---
@@ -329,7 +348,7 @@ npm run test       # Run tests
 - Images require `doubao-embedding-vision` or compatible multimodal embedding model
 - No cloud sync — all data is local-first
 - Single-user scope (no multi-tenant support)
-- CLI-only interface (Web UI planned for v3)
+- Terminal-only interfaces: readline CLI and Ink TUI. Web UI is planned for v3.
 
 ---
 
